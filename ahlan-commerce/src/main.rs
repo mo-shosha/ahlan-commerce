@@ -1,7 +1,13 @@
-#[derive(Clone)]
-struct ProductId(String);
+use serde::{Deserialize, Serialize};
+use std::sync::{Arc, Mutex};
+use axum::{extract::State,Json, routing::{get}, Router,http::StatusCode};
+use tokio::net::TcpListener;
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize)]
+pub struct ProductId(String);
+
+
+#[derive(Clone, Debug, Serialize)]
 pub struct Product {
     pub id:ProductId,
     pub title:String,
@@ -11,6 +17,7 @@ pub struct Product {
     pub published: bool
 }
 
+#[derive(Clone, Debug, Deserialize)]
 pub struct ProductCreate {
     pub title: String,
     pub handle: String,
@@ -20,21 +27,30 @@ pub struct ProductCreate {
 }
 
 
+#[derive(Clone)]
+pub struct AppState {
+    pub store: Arc<Mutex<Store>>,
+}
+
 pub struct Store{
-    products:Vec<Product>
+    products:Vec<Product>,
+    next_id: u64,
+
 }
 
 impl Store{
     pub fn new() -> Self {
         Self {
             products: Vec::new(),
+            next_id: 1,
+
         }
     }
 
 
-    fn create_product(&mut self,input: ProductCreate) -> Product{
+    pub fn create_product(&mut self,input: ProductCreate) -> Product{
         let product =Product {
-            id: ProductId(String::from("PROD-001")),
+            id: ProductId(format!("PROD-{:03}", self.next_id)),
             title: input.title,
             handle: input.handle,
             price_cents: input.price_cents,
@@ -43,6 +59,7 @@ impl Store{
         };
 
         self.products.push(product.clone());
+        self.next_id += 1;
 
         return product ;
     }
@@ -52,30 +69,62 @@ impl Store{
         self.products.clone()
     }
 }
-fn main() {
-    let mut store = Store::new();
 
-    let input = ProductCreate {
-        title: String::from("Mac"),
-        handle: String::from("mac"),
-        price_cents: 500000,
-        inventory_quantity: 7,
-        published: true,
-    };
 
-    let product = store.create_product(input);
-
-    println!("Created: {}", product.title);
+async fn list_products(State(state): State<AppState>,) -> Json<Vec<Product>> {
+    let store = state.store.lock().unwrap();
 
     let products = store.list_products();
 
-    for product in products {
-        println!("Name : {} with price : {}",product.title,product.price_cents);
-    }
-
-    //println!("Hello, world!");
+    Json(products)
 }
 
+
+
+
+async fn create_product(State(state): State<AppState>,Json(input): Json<ProductCreate>,
+                        ) -> (StatusCode, Json<Product>) {
+    let product = {
+        let mut store = state.store.lock().unwrap();
+
+        store.create_product(input)
+    };
+
+    (StatusCode::CREATED, Json(product))
+}
+
+
+async fn health() -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "status": "ok"
+    }))
+}
+
+#[tokio::main]
+async fn main() {
+    let state = AppState {
+        store: Arc::new(Mutex::new(Store::new())),
+    };
+
+    let app = Router::new()
+        .route("/", get(|| async { "Welcome to Ahlan Commerce by Shosha" }))
+        .route("/health", get(health))
+        .route(
+            "/api/products",
+            get(list_products).post(create_product),
+        )
+        .with_state(state);
+
+    let listener = TcpListener::bind("0.0.0.0:3000")
+        .await
+        .expect("failed to bind port");
+
+    println!("Server running on port 3000");
+
+    axum::serve(listener, app)
+        .await
+        .expect("server failed");
+}
 
 
 #[cfg(test)]
