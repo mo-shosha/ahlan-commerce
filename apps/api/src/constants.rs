@@ -2,6 +2,7 @@ pub mod routes {
     pub const ROOT: &str = "/";
     pub const HEALTH: &str = "/health";
     pub const PRODUCTS: &str = "/api/products";
+    pub const SIMULATED_INTERNAL_FAILURE: &str = "/api/debug/internal-failure";
 }
 
 pub mod env_keys {

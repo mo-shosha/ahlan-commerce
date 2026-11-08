@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{Clock, IdGenerator, NewProduct, Product};
+use crate::{Clock, IdGenerator, NewProduct, Product, CatalogError};
 
 
 pub struct ProductCatalog {
@@ -18,11 +18,27 @@ impl ProductCatalog {
         }
     }
 
-    pub fn create_product(&mut self, input: NewProduct) -> Product {
-        let product = Product::create(self.ids.new_product_id(), input, self.clock.now());
+    
+    pub fn create_product(&mut self,input: NewProduct) -> Result<Product, CatalogError> {
+        if input.title.trim().is_empty() {
+            return Err(CatalogError::ValidationFailed);
+        }
+
+        if self.products.iter().any(|product| product.handle == input.handle) {
+            return Err(CatalogError::DuplicateProductHandle);
+        }
+
+        let product = Product::create(
+            self.ids.new_product_id(),
+            input,
+            self.clock.now(),
+        );
+
         self.products.push(product.clone());
-        product
+
+        Ok(product)
     }
+
 
     pub fn list_products(&self) -> Vec<Product> {
         self.products.clone()
@@ -67,7 +83,7 @@ mod tests {
 
     #[test]
     fn create_product_copies_input_fields() {
-        let product = catalog().create_product(laptop());
+        let product = catalog().create_product(laptop()).expect("laptop is valid");
 
         assert_eq!(product.title, "Laptop");
         assert_eq!(product.handle, "laptop");
@@ -78,14 +94,14 @@ mod tests {
 
     #[test]
     fn create_product_assigns_id_from_generator() {
-        let product = catalog().create_product(laptop());
+        let product = catalog().create_product(laptop()).expect("laptop is valid");
 
         assert_eq!(product.id.to_string(), FIRST_ID);
     }
 
     #[test]
     fn create_product_sets_both_timestamps_from_clock() {
-        let product = catalog().create_product(laptop());
+        let product = catalog().create_product(laptop()).expect("laptop is valid");
         let now = FixedClock::from_rfc3339(NOW).now();
 
         assert_eq!(product.created_at, now);
@@ -96,8 +112,8 @@ mod tests {
     fn each_created_product_gets_the_next_id() {
         let mut catalog = catalog();
 
-        let first = catalog.create_product(laptop());
-        let second = catalog.create_product(phone());
+        let first = catalog.create_product(laptop()).expect("laptop is valid");
+        let second = catalog.create_product(phone()).expect("phone is valid");
 
         assert_eq!(first.id.to_string(), FIRST_ID);
         assert_eq!(second.id.to_string(), SECOND_ID);
@@ -111,8 +127,8 @@ mod tests {
     #[test]
     fn list_products_returns_products_in_creation_order() {
         let mut catalog = catalog();
-        let first = catalog.create_product(laptop());
-        let second = catalog.create_product(phone());
+        let first = catalog.create_product(laptop()).expect("laptop is valid");
+        let second = catalog.create_product(phone()).expect("phone is valid");
 
         assert_eq!(catalog.list_products(), vec![first, second]);
     }
@@ -120,7 +136,7 @@ mod tests {
     #[test]
     fn list_products_does_not_modify_catalog() {
         let mut catalog = catalog();
-        catalog.create_product(laptop());
+        catalog.create_product(laptop()).expect("laptop is valid");
 
         assert_eq!(catalog.list_products(), catalog.list_products());
         assert_eq!(catalog.list_products().len(), 1);

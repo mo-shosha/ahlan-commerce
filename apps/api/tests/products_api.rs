@@ -122,3 +122,45 @@ async fn created_products_are_listed_in_creation_order() {
     assert_eq!(products[1]["id"], SECOND_ID);
     assert_eq!(products[1]["handle"], "phone");
 }
+
+#[tokio::test]
+async fn internal_failure_returns_safe_public_error() {
+    let response = test_app()
+        .oneshot(get(routes::SIMULATED_INTERNAL_FAILURE))
+        .await
+        .expect("request failed");
+
+    let status = response.status();
+    let header_request_id = response
+        .headers()
+        .get("x-request-id")
+        .expect("x-request-id header is set")
+        .to_str()
+        .unwrap()
+        .to_string();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let raw_body = String::from_utf8(bytes.to_vec()).unwrap();
+    let body: Value = serde_json::from_str(&raw_body).expect("response body is JSON");
+
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(!header_request_id.is_empty());
+
+    // Exact match: the body has only the public fields and nothing extra.
+    assert_eq!(
+        body,
+        json!({
+            "error": {
+                "code": "internal_error",
+                "message": "An unexpected server error occurred.",
+                "request_id": header_request_id
+            }
+        })
+    );
+
+    for internal_detail in ["Inventory sync", "invalid digit", "ParseIntError", ".rs:"] {
+        assert!(
+            !raw_body.contains(internal_detail),
+            "response leaked internal detail: {internal_detail}"
+        );
+    }
+}
