@@ -1,0 +1,12 @@
+[package]
+name = "catalog"
+version.workspace = true
+edition.workspace = true
+
+[features]
+# Exposes deterministic ID and clock implementations for tests in other crates.
+test-support = []
+
+[dependencies]
+chrono.workspace = true
+uuid.workspace = true
