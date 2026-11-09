@@ -59,7 +59,7 @@ impl AppError {
         }
     }
 
-    fn error_code(&self) -> &'static str {
+    pub fn error_code(&self) -> &'static str {
         match &self.kind {
             AppErrorKind::ValidationFailed(_) => "validation_failed",
             AppErrorKind::DuplicateProductHandle => {
@@ -106,7 +106,7 @@ impl AppError {
 
         Self::new(kind, request_id)
     }
-
+    /* 
     fn log_message(&self) -> String {
         let root_cause = match &self.cause {
             Some(cause) => format!("{cause}"),
@@ -119,20 +119,38 @@ impl AppError {
             self.error_code(),
             root_cause,
         )
-    }
+    }*/
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> axum::response::Response {
-        if let AppErrorKind::InternalError = self.kind {
-            eprintln!("{}", self.log_message());
-        }
-
         let status = self.status_code();
+        let error_code = self.error_code();
+        tracing::Span::current().record("error_code", error_code);
+        
+        match &self.cause {
+            Some(cause) => {
+                tracing::error!(
+                    request_id = %self.request_id,
+                    error_code,
+                    status = status.as_u16(),
+                    cause = %cause,
+                    "Request failed"
+                );
+            }
+            None => {
+                tracing::warn!(
+                    request_id = %self.request_id,
+                    error_code,
+                    status = status.as_u16(),
+                    "Request failed"
+                );
+            }
+        }
 
         let body = ErrorResponse {
             error: ErrorDetails {
-                code: self.error_code(),
+                code: error_code,
                 message: self.public_message(),
                 request_id: self.request_id,
             },

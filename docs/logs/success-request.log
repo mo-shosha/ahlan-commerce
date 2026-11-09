@@ -1,0 +1,14 @@
+# Captured with: NO_COLOR=1 RUST_LOG=info AHLAN_API_ADDR=127.0.0.1:3999 cargo run -p api
+
+# Startup
+2026-11-09T03:25:41.467424Z  INFO api: Ahlan Commerce API listening addr=127.0.0.1:3999
+
+# GET /health
+2026-11-09T03:26:31.450753Z  INFO http_request{request_id=01a1be57-dc19-72b9-af26-736d99c7733e method=GET route=/health status=200 latency_ms=1}: api: HTTP request completed status=200 latency_ms=1
+
+# POST /api/products  (same request_id joins the product event to the request span)
+2026-11-09T03:26:32.018767Z  INFO http_request{request_id=01a1be57-de52-75b4-91c9-a5f2bd5d94e2 method=POST route=/api/products}: api::handlers: Product created operation="create_product" product_id=01a1be57-de52-75b4-91c9-a5f3629d433c product_handle=laptop
+2026-11-09T03:26:32.020323Z  INFO http_request{request_id=01a1be57-de52-75b4-91c9-a5f2bd5d94e2 method=POST route=/api/products status=201 latency_ms=2}: api: HTTP request completed status=201 latency_ms=2
+
+# GET /api/products
+2026-11-09T03:26:32.398558Z  INFO http_request{request_id=01a1be57-dfce-7154-bc06-93dedd6d621c method=GET route=/api/products status=200 latency_ms=0}: api: HTTP request completed status=200 latency_ms=0

@@ -124,6 +124,15 @@ async fn created_products_are_listed_in_creation_order() {
 }
 
 #[tokio::test]
+async fn unknown_route_returns_not_found_error() {
+    let (status, body) = send(&test_app(), get("/api/does-not-exist")).await;
+
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["error"]["code"], "not_found");
+    assert!(body["error"]["request_id"].as_str().is_some_and(|id| !id.is_empty()));
+}
+
+#[tokio::test]
 async fn internal_failure_returns_safe_public_error() {
     let response = test_app()
         .oneshot(get(routes::SIMULATED_INTERNAL_FAILURE))

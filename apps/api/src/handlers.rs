@@ -3,7 +3,7 @@ use rootcause::{Report, report, prelude::ResultExt};
 
 use crate::dto::{CreateProductRequest, HealthResponse, ProductResponse};
 use crate::state::AppState;
-use crate::app_error::AppError;
+use crate::app_error::{AppError, AppErrorKind};
 
 pub async fn root() -> &'static str {
     "Welcome to Ahlan Commerce by Shosha"
@@ -37,13 +37,33 @@ pub async fn create_product(
         )
     })?;
 
+    let product_handle = request.handle.clone();
+
     let product = catalog
         .create_product(request.into())
         .map_err(|error| {
-            AppError::from_catalog(error, request_id.clone())
+            let app_error = AppError::from_catalog(error, request_id.clone());
+            tracing::warn!(
+                operation = "create_product",
+                product_handle = %product_handle,
+                error_code = app_error.error_code(),
+                "Product creation rejected"
+            );
+            app_error
         })?;
 
+    tracing::info!(
+        operation = "create_product",
+        product_id = %product.id,
+        product_handle = %product.handle,
+        "Product created"
+    );
+
     Ok((StatusCode::CREATED, Json(product.into())))
+}
+
+pub async fn not_found(Extension(request_id): Extension<String>) -> AppError {
+    AppError::new(AppErrorKind::NotFound, request_id)
 }
 
 

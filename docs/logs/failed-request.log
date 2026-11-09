@@ -1,0 +1,26 @@
+# Captured with: NO_COLOR=1 RUST_LOG=info AHLAN_API_ADDR=127.0.0.1:3999 cargo run -p api
+
+# POST /api/products with an empty title -> 400 validation_failed
+2026-11-09T03:26:32.786644Z  WARN http_request{request_id=01a1be57-e152-72e1-b911-e58e9062f697 method=POST route=/api/products}: api::handlers: Product creation rejected operation="create_product" product_handle=empty-title error_code="validation_failed"
+2026-11-09T03:26:32.793745Z  WARN http_request{request_id=01a1be57-e152-72e1-b911-e58e9062f697 method=POST route=/api/products error_code="validation_failed"}: api::app_error: Request failed request_id=01a1be57-e152-72e1-b911-e58e9062f697 error_code="validation_failed" status=400
+2026-11-09T03:26:32.794647Z  INFO http_request{request_id=01a1be57-e152-72e1-b911-e58e9062f697 method=POST route=/api/products error_code="validation_failed" status=400 latency_ms=8}: api: HTTP request completed status=400 latency_ms=8
+
+# POST /api/products with an existing handle -> 409 duplicate_product_handle
+2026-11-09T03:26:33.193030Z  WARN http_request{request_id=01a1be57-e2e8-70bd-aece-eb016800a408 method=POST route=/api/products}: api::handlers: Product creation rejected operation="create_product" product_handle=laptop error_code="duplicate_product_handle"
+2026-11-09T03:26:33.199671Z  WARN http_request{request_id=01a1be57-e2e8-70bd-aece-eb016800a408 method=POST route=/api/products error_code="duplicate_product_handle"}: api::app_error: Request failed request_id=01a1be57-e2e8-70bd-aece-eb016800a408 error_code="duplicate_product_handle" status=409
+2026-11-09T03:26:33.199980Z  INFO http_request{request_id=01a1be57-e2e8-70bd-aece-eb016800a408 method=POST route=/api/products error_code="duplicate_product_handle" status=409 latency_ms=7}: api: HTTP request completed status=409 latency_ms=7
+
+# GET /api/debug/internal-failure -> 500 internal_error (cause stays in server logs, never in the response)
+2026-11-09T03:26:33.517011Z ERROR http_request{request_id=01a1be57-e42c-7071-a9b4-67a5125ddb2d method=GET route=/api/debug/internal-failure error_code="internal_error"}: api::app_error: Request failed request_id=01a1be57-e42c-7071-a9b4-67a5125ddb2d error_code="internal_error" status=500 cause=
+ ● Inventory sync failed: stored quantity is not a number
+ ├ apps\api\src\handlers.rs:76
+ │
+ ● invalid digit found in string
+ ╰ apps\api\src\handlers.rs:76
+
+2026-11-09T03:26:33.518442Z  INFO http_request{request_id=01a1be57-e42c-7071-a9b4-67a5125ddb2d method=GET route=/api/debug/internal-failure error_code="internal_error" status=500 latency_ms=1}: api: HTTP request completed status=500 latency_ms=1
+2026-11-09T03:26:33.519047Z ERROR http_request{request_id=01a1be57-e42c-7071-a9b4-67a5125ddb2d method=GET route=/api/debug/internal-failure error_code="internal_error" status=500 latency_ms=1}: tower_http::trace::on_failure: response failed classification=Status code: 500 Internal Server Error latency=1 ms
+
+# GET /api/does-not-exist -> 404 not_found (router fallback)
+2026-11-09T03:26:33.855787Z  WARN http_request{request_id=01a1be57-e57f-715a-a252-2473773b7c0b method=GET route=/api/does-not-exist error_code="not_found"}: api::app_error: Request failed request_id=01a1be57-e57f-715a-a252-2473773b7c0b error_code="not_found" status=404
+2026-11-09T03:26:33.856617Z  INFO http_request{request_id=01a1be57-e57f-715a-a252-2473773b7c0b method=GET route=/api/does-not-exist error_code="not_found" status=404 latency_ms=0}: api: HTTP request completed status=404 latency_ms=0

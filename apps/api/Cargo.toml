@@ -13,6 +13,9 @@ serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 uuid = { workspace = true, features = ["serde"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+tower-http = { version = "0.7.1", features = ["trace"] }
 
 [dev-dependencies]
 catalog = { workspace = true, features = ["test-support"] }
