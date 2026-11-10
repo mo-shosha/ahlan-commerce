@@ -23,14 +23,26 @@ const SECOND_ID: &str = "018f7b2a-9f62-7d0c-8c4f-7a1f37c1d002";
 const NOW: &str = "2026-01-01T00:00:00Z";
 // All tests connect at once, so connection setup can take longer than the API's request timeout.
 const TEST_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
-// Applied in this order, the same order as on a real database.
-const SCHEMA_FILES: [(&str, &str); 2] = [
-    ("initial-products.sql", include_str!("../../../db/initial-products.sql")),
-    (
-        "add-description-and-published-at.sql",
-        include_str!("../../../db/add-description-and-published-at.sql"),
-    ),
-];
+const MIGRATIONS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../db/migrations");
+
+fn migration_files() -> Vec<(String, String)> {
+    let mut paths: Vec<_> = std::fs::read_dir(MIGRATIONS_DIR)
+        .expect("read db/migrations")
+        .map(|entry| entry.expect("read migration entry").path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "sql"))
+        .collect();
+    paths.sort();
+    assert!(!paths.is_empty(), "no migrations in db/migrations; run atlas migrate diff");
+
+    paths
+        .into_iter()
+        .map(|path| {
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            let sql = std::fs::read_to_string(&path).expect("read migration file");
+            (name, sql)
+        })
+        .collect()
+}
 
 struct TestDb {
     database_url: String,
@@ -53,8 +65,8 @@ impl TestDb {
         admin.close().await;
 
         let pool = test_db.connect().await;
-        for (name, sql) in SCHEMA_FILES {
-            sqlx::raw_sql(sql)
+        for (name, sql) in migration_files() {
+            sqlx::raw_sql(AssertSqlSafe(sql))
                 .execute(&pool)
                 .await
                 .unwrap_or_else(|err| panic!("apply {name}: {err}"));
