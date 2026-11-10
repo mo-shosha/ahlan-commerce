@@ -1,47 +1,42 @@
 use std::sync::Arc;
 
-use crate::{Clock, IdGenerator, NewProduct, Product, CatalogError};
+use sqlx::PgPool;
+
+use crate::{Clock, IdGenerator, NewProduct, Product, CatalogError, store};
 
 
 pub struct ProductCatalog {
-    products: Vec<Product>,
     ids: Arc<dyn IdGenerator>,
     clock: Arc<dyn Clock>,
 }
 
 impl ProductCatalog {
     pub fn new(ids: Arc<dyn IdGenerator>, clock: Arc<dyn Clock>) -> Self {
-        Self {
-            products: Vec::new(),
-            ids,
-            clock,
-        }
+        Self { ids, clock }
     }
 
-    
-    pub fn create_product(&mut self,input: NewProduct) -> Result<Product, CatalogError> {
+
+    pub async fn create_product(&self, db: &PgPool, input: NewProduct) -> Result<Product, CatalogError> {
+        let product = self.new_product(input)?;
+
+        store::insert_product(db, &product).await
+    }
+
+
+    pub async fn list_products(&self, db: &PgPool) -> Result<Vec<Product>, CatalogError> {
+        store::list_products(db).await
+    }
+
+    fn new_product(&self, input: NewProduct) -> Result<Product, CatalogError> {
         if input.title.trim().is_empty() {
             return Err(CatalogError::ValidationFailed);
         }
 
-        if self.products.iter().any(|product| product.handle == input.handle) {
-            return Err(CatalogError::DuplicateProductHandle);
-        }
-
-        let product = Product::create(
+        Ok(Product::create(
             self.ids.new_product_id(),
             input,
             self.clock.now(),
-        );
-
-        self.products.push(product.clone());
-
-        Ok(product)
-    }
-
-
-    pub fn list_products(&self) -> Vec<Product> {
-        self.products.clone()
+        ))
     }
 }
 
@@ -82,8 +77,8 @@ mod tests {
     }
 
     #[test]
-    fn create_product_copies_input_fields() {
-        let product = catalog().create_product(laptop()).expect("laptop is valid");
+    fn new_product_copies_input_fields() {
+        let product = catalog().new_product(laptop()).expect("laptop is valid");
 
         assert_eq!(product.title, "Laptop");
         assert_eq!(product.handle, "laptop");
@@ -93,15 +88,15 @@ mod tests {
     }
 
     #[test]
-    fn create_product_assigns_id_from_generator() {
-        let product = catalog().create_product(laptop()).expect("laptop is valid");
+    fn new_product_assigns_id_from_generator() {
+        let product = catalog().new_product(laptop()).expect("laptop is valid");
 
         assert_eq!(product.id.to_string(), FIRST_ID);
     }
 
     #[test]
-    fn create_product_sets_both_timestamps_from_clock() {
-        let product = catalog().create_product(laptop()).expect("laptop is valid");
+    fn new_product_sets_both_timestamps_from_clock() {
+        let product = catalog().new_product(laptop()).expect("laptop is valid");
         let now = FixedClock::from_rfc3339(NOW).now();
 
         assert_eq!(product.created_at, now);
@@ -109,36 +104,22 @@ mod tests {
     }
 
     #[test]
-    fn each_created_product_gets_the_next_id() {
-        let mut catalog = catalog();
+    fn each_new_product_gets_the_next_id() {
+        let catalog = catalog();
 
-        let first = catalog.create_product(laptop()).expect("laptop is valid");
-        let second = catalog.create_product(phone()).expect("phone is valid");
+        let first = catalog.new_product(laptop()).expect("laptop is valid");
+        let second = catalog.new_product(phone()).expect("phone is valid");
 
         assert_eq!(first.id.to_string(), FIRST_ID);
         assert_eq!(second.id.to_string(), SECOND_ID);
     }
 
     #[test]
-    fn list_products_is_empty_for_new_catalog() {
-        assert!(catalog().list_products().is_empty());
-    }
+    fn new_product_rejects_blank_title() {
+        let blank = NewProduct { title: "   ".to_string(), ..laptop() };
 
-    #[test]
-    fn list_products_returns_products_in_creation_order() {
-        let mut catalog = catalog();
-        let first = catalog.create_product(laptop()).expect("laptop is valid");
-        let second = catalog.create_product(phone()).expect("phone is valid");
+        let error = catalog().new_product(blank).unwrap_err();
 
-        assert_eq!(catalog.list_products(), vec![first, second]);
-    }
-
-    #[test]
-    fn list_products_does_not_modify_catalog() {
-        let mut catalog = catalog();
-        catalog.create_product(laptop()).expect("laptop is valid");
-
-        assert_eq!(catalog.list_products(), catalog.list_products());
-        assert_eq!(catalog.list_products().len(), 1);
+        assert!(matches!(error, CatalogError::ValidationFailed));
     }
 }

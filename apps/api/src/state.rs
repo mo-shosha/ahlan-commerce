@@ -1,20 +1,23 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use catalog::ProductCatalog;
+use sqlx::PgPool;
 
 use crate::config::Config;
 
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
-    pub catalog: Arc<Mutex<ProductCatalog>>,
+    pub db: PgPool,
+    pub catalog: Arc<ProductCatalog>,
 }
 
 impl AppState {
-    pub fn new(config: Config, catalog: ProductCatalog) -> Self {
+    pub fn new(config: Config, db: PgPool, catalog: ProductCatalog) -> Self {
         Self {
             config: Arc::new(config),
-            catalog: Arc::new(Mutex::new(catalog)),
+            db,
+            catalog: Arc::new(catalog),
         }
     }
 }

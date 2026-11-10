@@ -10,6 +10,7 @@ axum.workspace = true
 chrono = { workspace = true, features = ["serde"] }
 rootcause.workspace = true
 serde.workspace = true
+sqlx.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 uuid = { workspace = true, features = ["serde"] }

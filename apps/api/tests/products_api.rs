@@ -1,6 +1,7 @@
+use std::str::FromStr;
 use std::sync::Arc;
 
-use api::{config::Config, constants::routes, router, state::AppState};
+use api::{config::Config, constants::{env_keys, routes}, db, router, state::AppState};
 use axum::{
     Router,
     body::Body,
@@ -12,19 +13,86 @@ use catalog::{
 };
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
+use sqlx::{AssertSqlSafe, PgPool, postgres::PgConnectOptions};
 use tower::ServiceExt;
+use uuid::Uuid;
 
 const FIRST_ID: &str = "018f7b2a-9f62-7d0c-8c4f-7a1f37c1d001";
 const SECOND_ID: &str = "018f7b2a-9f62-7d0c-8c4f-7a1f37c1d002";
 const NOW: &str = "2026-01-01T00:00:00Z";
+const INITIAL_PRODUCTS_SQL: &str = include_str!("../../../db/initial-products.sql");
 
-fn test_app() -> Router {
-    let config = Config::from_lookup(|_| None).expect("default config is valid");
+struct TestDb {
+    database_url: String,
+    schema: String,
+}
+
+impl TestDb {
+    async fn create() -> Self {
+        let database_url = std::env::var(env_keys::DATABASE_URL).unwrap_or_else(|_| {
+            panic!("set {} to run the API tests against PostgreSQL", env_keys::DATABASE_URL)
+        });
+        let schema = format!("test_{}", Uuid::now_v7().simple());
+        let test_db = Self { database_url, schema };
+
+        let admin = test_db.admin_pool().await;
+        sqlx::raw_sql(AssertSqlSafe(format!("create schema {}", test_db.schema)))
+            .execute(&admin)
+            .await
+            .expect("create test schema");
+        admin.close().await;
+
+        let pool = test_db.connect().await;
+        sqlx::raw_sql(INITIAL_PRODUCTS_SQL)
+            .execute(&pool)
+            .await
+            .expect("apply initial-products.sql");
+        pool.close().await;
+
+        test_db
+    }
+
+    async fn connect(&self) -> PgPool {
+        let options = PgConnectOptions::from_str(&self.database_url)
+            .expect("valid database url")
+            .options([("search_path", self.schema.as_str())]);
+
+        db::pool_options()
+            .connect_with(options)
+            .await
+            .expect("connect to test schema")
+    }
+
+    async fn admin_pool(&self) -> PgPool {
+        db::connect(&self.database_url).await.expect("connect to PostgreSQL")
+    }
+
+    async fn drop(self) {
+        let admin = self.admin_pool().await;
+        sqlx::raw_sql(AssertSqlSafe(format!("drop schema {} cascade", self.schema)))
+            .execute(&admin)
+            .await
+            .expect("drop test schema");
+        admin.close().await;
+    }
+}
+
+async fn app_for(test_db: &TestDb, ids: &[&str]) -> Router {
+    let config = Config::from_lookup(|key| {
+        (key == env_keys::DATABASE_URL).then(|| test_db.database_url.clone())
+    })
+    .expect("test config is valid");
     let catalog = ProductCatalog::new(
-        Arc::new(FixedIds::new([FIRST_ID, SECOND_ID])),
+        Arc::new(FixedIds::new(ids.iter().copied())),
         Arc::new(FixedClock::from_rfc3339(NOW)),
     );
-    router(AppState::new(config, catalog))
+    router(AppState::new(config, test_db.connect().await, catalog))
+}
+
+async fn test_app() -> (Router, TestDb) {
+    let test_db = TestDb::create().await;
+    let app = app_for(&test_db, &[FIRST_ID, SECOND_ID]).await;
+    (app, test_db)
 }
 
 async fn send(app: &Router, request: Request<Body>) -> (StatusCode, Value) {
@@ -65,23 +133,31 @@ fn laptop_request() -> Value {
 
 #[tokio::test]
 async fn health_returns_ok() {
-    let (status, body) = send(&test_app(), get(routes::HEALTH)).await;
+    let (app, test_db) = test_app().await;
+
+    let (status, body) = send(&app, get(routes::HEALTH)).await;
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body, json!({ "status": "ok" }));
+    test_db.drop().await;
 }
 
 #[tokio::test]
 async fn list_products_starts_empty() {
-    let (status, body) = send(&test_app(), get(routes::PRODUCTS)).await;
+    let (app, test_db) = test_app().await;
+
+    let (status, body) = send(&app, get(routes::PRODUCTS)).await;
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body, json!([]));
+    test_db.drop().await;
 }
 
 #[tokio::test]
 async fn create_product_returns_created_product() {
-    let (status, body) = send(&test_app(), post_json(routes::PRODUCTS, laptop_request())).await;
+    let (app, test_db) = test_app().await;
+
+    let (status, body) = send(&app, post_json(routes::PRODUCTS, laptop_request())).await;
 
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(
@@ -97,11 +173,12 @@ async fn create_product_returns_created_product() {
             "updated_at": NOW
         })
     );
+    test_db.drop().await;
 }
 
 #[tokio::test]
 async fn created_products_are_listed_in_creation_order() {
-    let app = test_app();
+    let (app, test_db) = test_app().await;
     let phone = json!({
         "title": "Phone",
         "handle": "phone",
@@ -121,20 +198,82 @@ async fn created_products_are_listed_in_creation_order() {
     assert_eq!(products[0]["handle"], "laptop");
     assert_eq!(products[1]["id"], SECOND_ID);
     assert_eq!(products[1]["handle"], "phone");
+    test_db.drop().await;
+}
+
+#[tokio::test]
+async fn products_survive_an_api_restart() {
+    let test_db = TestDb::create().await;
+    let (_, created) = send(
+        &app_for(&test_db, &[FIRST_ID]).await,
+        post_json(routes::PRODUCTS, laptop_request()),
+    )
+    .await;
+
+    let restarted = app_for(&test_db, &[]).await;
+    let (status, body) = send(&restarted, get(routes::PRODUCTS)).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, json!([created]));
+    test_db.drop().await;
+}
+
+#[tokio::test]
+async fn duplicate_handle_returns_conflict() {
+    let (app, test_db) = test_app().await;
+
+    send(&app, post_json(routes::PRODUCTS, laptop_request())).await;
+    let (status, body) = send(&app, post_json(routes::PRODUCTS, laptop_request())).await;
+
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["error"]["code"], "duplicate_product_handle");
+    test_db.drop().await;
+}
+
+#[tokio::test]
+async fn blank_title_returns_validation_error() {
+    let (app, test_db) = test_app().await;
+    let mut request = laptop_request();
+    request["title"] = json!("  ");
+
+    let (status, body) = send(&app, post_json(routes::PRODUCTS, request)).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "validation_failed");
+    test_db.drop().await;
+}
+
+#[tokio::test]
+async fn price_above_integer_column_returns_validation_error() {
+    let (app, test_db) = test_app().await;
+    let mut request = laptop_request();
+    request["price_cents"] = json!(u32::MAX);
+
+    let (status, body) = send(&app, post_json(routes::PRODUCTS, request)).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "validation_failed");
+    assert_eq!(body["error"]["message"], "price_cents must be at most 2147483647.");
+    test_db.drop().await;
 }
 
 #[tokio::test]
 async fn unknown_route_returns_not_found_error() {
-    let (status, body) = send(&test_app(), get("/api/does-not-exist")).await;
+    let (app, test_db) = test_app().await;
+
+    let (status, body) = send(&app, get("/api/does-not-exist")).await;
 
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_eq!(body["error"]["code"], "not_found");
     assert!(body["error"]["request_id"].as_str().is_some_and(|id| !id.is_empty()));
+    test_db.drop().await;
 }
 
 #[tokio::test]
 async fn internal_failure_returns_safe_public_error() {
-    let response = test_app()
+    let (app, test_db) = test_app().await;
+
+    let response = app
         .oneshot(get(routes::SIMULATED_INTERNAL_FAILURE))
         .await
         .expect("request failed");
@@ -172,4 +311,5 @@ async fn internal_failure_returns_safe_public_error() {
             "response leaked internal detail: {internal_detail}"
         );
     }
+    test_db.drop().await;
 }

@@ -99,12 +99,33 @@ impl AppError {
                     "Product title is required.".to_string(),
                 )
             }
+            catalog::CatalogError::ValueTooLarge { field, max } => {
+                AppErrorKind::ValidationFailed(format!("{field} must be at most {max}."))
+            }
             catalog::CatalogError::DuplicateProductHandle => {
                 AppErrorKind::DuplicateProductHandle
+            }
+            catalog::CatalogError::Storage(cause) => {
+                return Self::from_storage(cause, request_id);
             }
         };
 
         Self::new(kind, request_id)
+    }
+
+    fn from_storage(cause: sqlx::Error, request_id: String) -> Self {
+        let kind = match &cause {
+            sqlx::Error::PoolTimedOut | sqlx::Error::PoolClosed | sqlx::Error::Io(_) => {
+                AppErrorKind::DependencyUnavailable
+            }
+            _ => AppErrorKind::InternalError,
+        };
+
+        Self {
+            kind,
+            request_id,
+            cause: Some(Report::from(cause)),
+        }
     }
     /* 
     fn log_message(&self) -> String {
@@ -163,17 +184,6 @@ impl IntoResponse for AppError {
 
 impl From<CatalogError> for AppError {
     fn from(error: CatalogError) -> Self {
-        let kind = match error {
-            CatalogError::ValidationFailed => {
-                AppErrorKind::ValidationFailed(
-                    "Product title is required.".to_string(),
-                )
-            }
-            CatalogError::DuplicateProductHandle => {
-                AppErrorKind::DuplicateProductHandle
-            }
-        };
-
-        Self::new(kind, "temporary-request-id".to_string())
+        Self::from_catalog(error, "temporary-request-id".to_string())
     }
 }

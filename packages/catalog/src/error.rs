@@ -1,10 +1,16 @@
 use thiserror::Error;
 
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Error)]
 pub enum CatalogError {
     #[error("Product title is required")]
     ValidationFailed,
 
+    #[error("{field} must be at most {max}")]
+    ValueTooLarge { field: &'static str, max: i32 },
+
     #[error("Another product already uses this handle")]
     DuplicateProductHandle,
+
+    #[error("Product storage failed")]
+    Storage(#[from] sqlx::Error),
 }

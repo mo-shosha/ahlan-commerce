@@ -2,6 +2,7 @@ mod clock;
 mod id;
 mod product;
 mod service;
+mod store;
 pub mod error;
 
 pub use error::CatalogError;

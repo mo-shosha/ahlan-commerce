@@ -7,8 +7,14 @@ pub mod routes {
 
 pub mod env_keys {
     pub const API_ADDR: &str = "AHLAN_API_ADDR";
+    pub const DATABASE_URL: &str = "DATABASE_URL";
 }
 
 pub mod defaults {
+    use std::time::Duration;
+
     pub const API_ADDR: &str = "0.0.0.0:3000";
+    pub const DATABASE_URL_EXAMPLE: &str = "postgres://postgres::5432/ahlan_commerce";
+    pub const DB_MAX_CONNECTIONS: u32 = 5;
+    pub const DB_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(3);
 }

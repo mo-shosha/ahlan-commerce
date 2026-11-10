@@ -1,5 +1,5 @@
 use axum::{Json, extract::State, http::StatusCode,Extension};
-use rootcause::{Report, report, prelude::ResultExt};
+use rootcause::{Report, prelude::ResultExt};
 
 use crate::dto::{CreateProductRequest, HealthResponse, ProductResponse};
 use crate::state::AppState;
@@ -13,14 +13,17 @@ pub async fn health() -> Json<HealthResponse> {
     Json(HealthResponse { status: "ok" })
 }
 
-pub async fn list_products(State(state): State<AppState>) -> Json<Vec<ProductResponse>> {
+pub async fn list_products(
+    State(state): State<AppState>,
+    Extension(request_id): Extension<String>,
+) -> Result<Json<Vec<ProductResponse>>, AppError> {
     let products = state
         .catalog
-        .lock()
-        .expect("catalog lock poisoned")
-        .list_products();
+        .list_products(&state.db)
+        .await
+        .map_err(|error| AppError::from_catalog(error, request_id))?;
 
-    Json(products.into_iter().map(ProductResponse::from).collect())
+    Ok(Json(products.into_iter().map(ProductResponse::from).collect()))
 }
 
 
@@ -30,17 +33,12 @@ pub async fn create_product(
     Extension(request_id): Extension<String>,
     Json(request): Json<CreateProductRequest>,
 ) -> Result<(StatusCode, Json<ProductResponse>), AppError> {
-    let mut catalog = state.catalog.lock().map_err(|_| {
-        AppError::internal(
-            report!("catalog lock was poisoned by an earlier panic"),
-            request_id.clone(),
-        )
-    })?;
-
     let product_handle = request.handle.clone();
 
-    let product = catalog
-        .create_product(request.into())
+    let product = state
+        .catalog
+        .create_product(&state.db, request.into())
+        .await
         .map_err(|error| {
             let app_error = AppError::from_catalog(error, request_id.clone());
             tracing::warn!(
