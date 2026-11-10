@@ -20,13 +20,18 @@ route constant -> handler -> catalog domain function -> plain SQL (sqlx) -> Post
 ## Database
 
 Products live in a local PostgreSQL database named `ahlan_commerce`. The schema is
-applied by hand from `db/initial-products.sql` (no migration tool yet):
+applied by hand from the files in `db/`, in this order (no migration tool yet):
 
 ```powershell
 $psql = "C:\Program Files\PostgreSQL\18\bin\psql.exe"
 & $psql -h localhost -U postgres -c "create database ahlan_commerce;"
-& $psql -h localhost -U postgres -d ahlan_commerce -f db/initial-products.sql
+& $psql -h localhost -U postgres -d ahlan_commerce -v ON_ERROR_STOP=1 -f db/initial-products.sql
+& $psql -h localhost -U postgres -d ahlan_commerce -v ON_ERROR_STOP=1 -f db/add-description-and-published-at.sql
 ```
+
+An existing database that already has `initial-products.sql` needs only the second file,
+once. See `docs/manual-schema-change.md` for the order of steps and what goes wrong when
+it is skipped. The API contract is in `docs/product-api-contract.md`.
 
 ## Run
 

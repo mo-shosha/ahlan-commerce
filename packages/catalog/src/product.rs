@@ -4,6 +4,7 @@ use crate::{ProductId, Timestamp};
 pub struct NewProduct {
     pub title: String,
     pub handle: String,
+    pub description: Option<String>,
     pub price_cents: u32,
     pub inventory_quantity: u32,
     pub published: bool,
@@ -14,9 +15,11 @@ pub struct Product {
     pub id: ProductId,
     pub title: String,
     pub handle: String,
+    pub description: Option<String>,
     pub price_cents: u32,
     pub inventory_quantity: u32,
     pub published: bool,
+    pub published_at: Option<Timestamp>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -27,9 +30,11 @@ impl Product {
             id,
             title: input.title,
             handle: input.handle,
+            description: input.description,
             price_cents: input.price_cents,
             inventory_quantity: input.inventory_quantity,
             published: input.published,
+            published_at: input.published.then_some(now),
             created_at: now,
             updated_at: now,
         }

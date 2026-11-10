@@ -10,16 +10,20 @@ pub(crate) async fn insert_product(db: &PgPool, product: &Product) -> Result<Pro
 
     let row = sqlx::query(
         "insert into products
-            (id, title, handle, price_cents, inventory_quantity, published, created_at, updated_at)
-         values ($1, $2, $3, $4, $5, $6, $7, $8)
-         returning id, title, handle, price_cents, inventory_quantity, published, created_at, updated_at",
+            (id, title, handle, description, price_cents, inventory_quantity,
+             published, published_at, created_at, updated_at)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         returning id, title, handle, description, price_cents, inventory_quantity,
+                   published, published_at, created_at, updated_at",
     )
     .bind(product.id.as_uuid())
     .bind(&product.title)
     .bind(&product.handle)
+    .bind(&product.description)
     .bind(price_cents)
     .bind(inventory_quantity)
     .bind(product.published)
+    .bind(product.published_at)
     .bind(product.created_at)
     .bind(product.updated_at)
     .fetch_one(db)
@@ -38,7 +42,8 @@ pub(crate) async fn insert_product(db: &PgPool, product: &Product) -> Result<Pro
 
 pub(crate) async fn list_products(db: &PgPool) -> Result<Vec<Product>, CatalogError> {
     let rows = sqlx::query(
-        "select id, title, handle, price_cents, inventory_quantity, published, created_at, updated_at
+        "select id, title, handle, description, price_cents, inventory_quantity,
+                published, published_at, created_at, updated_at
          from products
          order by created_at, id",
     )
@@ -58,9 +63,11 @@ fn product_from_row(row: &PgRow) -> Result<Product, sqlx::Error> {
         id: ProductId::from_uuid(row.try_get("id")?),
         title: row.try_get("title")?,
         handle: row.try_get("handle")?,
+        description: row.try_get("description")?,
         price_cents: from_db_int(row, "price_cents")?,
         inventory_quantity: from_db_int(row, "inventory_quantity")?,
         published: row.try_get("published")?,
+        published_at: row.try_get("published_at")?,
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
     })

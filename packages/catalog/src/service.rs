@@ -32,12 +32,26 @@ impl ProductCatalog {
             return Err(CatalogError::ValidationFailed);
         }
 
+        if !is_url_safe_handle(&input.handle) {
+            return Err(CatalogError::InvalidHandle);
+        }
+
         Ok(Product::create(
             self.ids.new_product_id(),
             input,
             self.clock.now(),
         ))
     }
+}
+
+fn is_url_safe_handle(handle: &str) -> bool {
+    !handle.is_empty()
+        && !handle.starts_with('-')
+        && !handle.ends_with('-')
+        && !handle.contains("--")
+        && handle
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
 }
 
 #[cfg(test)]
@@ -60,6 +74,7 @@ mod tests {
         NewProduct {
             title: "Laptop".to_string(),
             handle: "laptop".to_string(),
+            description: Some("Light laptop for travel.".to_string()),
             price_cents: 50_000,
             inventory_quantity: 10,
             published: true,
@@ -70,6 +85,7 @@ mod tests {
         NewProduct {
             title: "Phone".to_string(),
             handle: "phone".to_string(),
+            description: None,
             price_cents: 30_000,
             inventory_quantity: 5,
             published: false,
@@ -82,6 +98,7 @@ mod tests {
 
         assert_eq!(product.title, "Laptop");
         assert_eq!(product.handle, "laptop");
+        assert_eq!(product.description.as_deref(), Some("Light laptop for travel."));
         assert_eq!(product.price_cents, 50_000);
         assert_eq!(product.inventory_quantity, 10);
         assert!(product.published);
@@ -121,5 +138,39 @@ mod tests {
         let error = catalog().new_product(blank).unwrap_err();
 
         assert!(matches!(error, CatalogError::ValidationFailed));
+    }
+
+    #[test]
+    fn published_product_gets_published_at_from_clock() {
+        let product = catalog().new_product(laptop()).expect("laptop is valid");
+
+        assert_eq!(product.published_at, Some(FixedClock::from_rfc3339(NOW).now()));
+    }
+
+    #[test]
+    fn unpublished_product_has_no_published_at() {
+        let product = catalog().new_product(phone()).expect("phone is valid");
+
+        assert_eq!(product.published_at, None);
+    }
+
+    #[test]
+    fn new_product_accepts_url_safe_handles() {
+        for handle in ["coffee-mug", "mug2", "a-1-b"] {
+            let input = NewProduct { handle: handle.to_string(), ..laptop() };
+
+            assert!(catalog().new_product(input).is_ok(), "{handle:?} should be accepted");
+        }
+    }
+
+    #[test]
+    fn new_product_rejects_handles_that_are_not_lowercase_url_safe() {
+        for handle in ["", "Coffee-Mug", "coffee mug", "coffee_mug", "-mug", "mug-", "coffee--mug", "café"] {
+            let input = NewProduct { handle: handle.to_string(), ..laptop() };
+
+            let error = catalog().new_product(input).unwrap_err();
+
+            assert!(matches!(error, CatalogError::InvalidHandle), "{handle:?} should be rejected");
+        }
     }
 }

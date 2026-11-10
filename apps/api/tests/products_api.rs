@@ -1,5 +1,6 @@
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use api::{config::Config, constants::{env_keys, routes}, db, router, state::AppState};
 use axum::{
@@ -20,7 +21,16 @@ use uuid::Uuid;
 const FIRST_ID: &str = "018f7b2a-9f62-7d0c-8c4f-7a1f37c1d001";
 const SECOND_ID: &str = "018f7b2a-9f62-7d0c-8c4f-7a1f37c1d002";
 const NOW: &str = "2026-01-01T00:00:00Z";
-const INITIAL_PRODUCTS_SQL: &str = include_str!("../../../db/initial-products.sql");
+// All tests connect at once, so connection setup can take longer than the API's request timeout.
+const TEST_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
+// Applied in this order, the same order as on a real database.
+const SCHEMA_FILES: [(&str, &str); 2] = [
+    ("initial-products.sql", include_str!("../../../db/initial-products.sql")),
+    (
+        "add-description-and-published-at.sql",
+        include_str!("../../../db/add-description-and-published-at.sql"),
+    ),
+];
 
 struct TestDb {
     database_url: String,
@@ -43,10 +53,12 @@ impl TestDb {
         admin.close().await;
 
         let pool = test_db.connect().await;
-        sqlx::raw_sql(INITIAL_PRODUCTS_SQL)
-            .execute(&pool)
-            .await
-            .expect("apply initial-products.sql");
+        for (name, sql) in SCHEMA_FILES {
+            sqlx::raw_sql(sql)
+                .execute(&pool)
+                .await
+                .unwrap_or_else(|err| panic!("apply {name}: {err}"));
+        }
         pool.close().await;
 
         test_db
@@ -58,13 +70,19 @@ impl TestDb {
             .options([("search_path", self.schema.as_str())]);
 
         db::pool_options()
+            .acquire_timeout(TEST_ACQUIRE_TIMEOUT)
             .connect_with(options)
             .await
             .expect("connect to test schema")
     }
 
     async fn admin_pool(&self) -> PgPool {
-        db::connect(&self.database_url).await.expect("connect to PostgreSQL")
+        db::pool_options()
+            .max_connections(1)
+            .acquire_timeout(TEST_ACQUIRE_TIMEOUT)
+            .connect(&self.database_url)
+            .await
+            .expect("connect to PostgreSQL")
     }
 
     async fn drop(self) {
@@ -125,10 +143,32 @@ fn laptop_request() -> Value {
     json!({
         "title": "Laptop",
         "handle": "laptop",
+        "description": "Light laptop for travel.",
         "price_cents": 50000,
         "inventory_quantity": 10,
         "published": true
     })
+}
+
+fn phone_request() -> Value {
+    json!({
+        "title": "Phone",
+        "handle": "phone",
+        "price_cents": 30000,
+        "inventory_quantity": 5,
+        "published": false
+    })
+}
+
+async fn assert_validation_failed(request: Value) {
+    let (app, test_db) = test_app().await;
+
+    let (status, body) = send(&app, post_json(routes::PRODUCTS, request)).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "validation_failed");
+    assert!(body["error"]["request_id"].as_str().is_some_and(|id| !id.is_empty()));
+    test_db.drop().await;
 }
 
 #[tokio::test]
@@ -149,12 +189,12 @@ async fn list_products_starts_empty() {
     let (status, body) = send(&app, get(routes::PRODUCTS)).await;
 
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body, json!([]));
+    assert_eq!(body, json!({ "products": [] }));
     test_db.drop().await;
 }
 
 #[tokio::test]
-async fn create_product_returns_created_product() {
+async fn create_published_product_returns_contract_shape() {
     let (app, test_db) = test_app().await;
 
     let (status, body) = send(&app, post_json(routes::PRODUCTS, laptop_request())).await;
@@ -163,41 +203,72 @@ async fn create_product_returns_created_product() {
     assert_eq!(
         body,
         json!({
-            "id": FIRST_ID,
-            "title": "Laptop",
-            "handle": "laptop",
-            "price_cents": 50000,
-            "inventory_quantity": 10,
-            "published": true,
-            "created_at": NOW,
-            "updated_at": NOW
+            "product": {
+                "id": FIRST_ID,
+                "title": "Laptop",
+                "handle": "laptop",
+                "description": "Light laptop for travel.",
+                "price_cents": 50000,
+                "inventory_quantity": 10,
+                "published": true,
+                "published_at": NOW,
+                "created_at": NOW,
+                "updated_at": NOW
+            }
         })
     );
     test_db.drop().await;
 }
 
 #[tokio::test]
-async fn created_products_are_listed_in_creation_order() {
+async fn unpublished_product_without_description_stores_nulls() {
     let (app, test_db) = test_app().await;
-    let phone = json!({
-        "title": "Phone",
-        "handle": "phone",
-        "price_cents": 30000,
-        "inventory_quantity": 5,
-        "published": false
-    });
+
+    let (status, body) = send(&app, post_json(routes::PRODUCTS, phone_request())).await;
+
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(body["product"]["description"], Value::Null);
+    assert_eq!(body["product"]["published"], false);
+    assert_eq!(body["product"]["published_at"], Value::Null);
+    test_db.drop().await;
+}
+
+#[tokio::test]
+async fn null_description_is_stored_as_null() {
+    let (app, test_db) = test_app().await;
+    let mut request = laptop_request();
+    request["description"] = Value::Null;
+
+    let (status, body) = send(&app, post_json(routes::PRODUCTS, request)).await;
+
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(body["product"]["description"], Value::Null);
+    test_db.drop().await;
+}
+
+#[tokio::test]
+async fn list_returns_new_columns_in_creation_order() {
+    let (app, test_db) = test_app().await;
 
     send(&app, post_json(routes::PRODUCTS, laptop_request())).await;
-    send(&app, post_json(routes::PRODUCTS, phone)).await;
+    send(&app, post_json(routes::PRODUCTS, phone_request())).await;
     let (status, body) = send(&app, get(routes::PRODUCTS)).await;
 
     assert_eq!(status, StatusCode::OK);
-    let products = body.as_array().expect("list response is an array");
+    let products = body["products"].as_array().expect("products is an array");
     assert_eq!(products.len(), 2);
+
     assert_eq!(products[0]["id"], FIRST_ID);
     assert_eq!(products[0]["handle"], "laptop");
+    assert_eq!(products[0]["description"], "Light laptop for travel.");
+    assert_eq!(products[0]["published_at"], NOW);
+    assert_eq!(products[0]["created_at"], NOW);
+    assert_eq!(products[0]["updated_at"], NOW);
+
     assert_eq!(products[1]["id"], SECOND_ID);
     assert_eq!(products[1]["handle"], "phone");
+    assert_eq!(products[1]["description"], Value::Null);
+    assert_eq!(products[1]["published_at"], Value::Null);
     test_db.drop().await;
 }
 
@@ -214,7 +285,7 @@ async fn products_survive_an_api_restart() {
     let (status, body) = send(&restarted, get(routes::PRODUCTS)).await;
 
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body, json!([created]));
+    assert_eq!(body, json!({ "products": [created["product"]] }));
     test_db.drop().await;
 }
 
@@ -232,15 +303,44 @@ async fn duplicate_handle_returns_conflict() {
 
 #[tokio::test]
 async fn blank_title_returns_validation_error() {
-    let (app, test_db) = test_app().await;
     let mut request = laptop_request();
     request["title"] = json!("  ");
 
-    let (status, body) = send(&app, post_json(routes::PRODUCTS, request)).await;
+    assert_validation_failed(request).await;
+}
 
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(body["error"]["code"], "validation_failed");
-    test_db.drop().await;
+#[tokio::test]
+async fn missing_title_returns_validation_error() {
+    let mut request = laptop_request();
+    request.as_object_mut().unwrap().remove("title");
+
+    assert_validation_failed(request).await;
+}
+
+#[tokio::test]
+async fn handle_that_is_not_lowercase_url_safe_returns_validation_error() {
+    for handle in ["Coffee-Mug", "coffee mug", "coffee/mug"] {
+        let mut request = laptop_request();
+        request["handle"] = json!(handle);
+
+        assert_validation_failed(request).await;
+    }
+}
+
+#[tokio::test]
+async fn negative_price_returns_validation_error() {
+    let mut request = laptop_request();
+    request["price_cents"] = json!(-1);
+
+    assert_validation_failed(request).await;
+}
+
+#[tokio::test]
+async fn negative_inventory_returns_validation_error() {
+    let mut request = laptop_request();
+    request["inventory_quantity"] = json!(-1);
+
+    assert_validation_failed(request).await;
 }
 
 #[tokio::test]

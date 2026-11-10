@@ -1,7 +1,10 @@
-use axum::{Json, extract::State, http::StatusCode,Extension};
+use axum::{Json, extract::{State, rejection::JsonRejection}, http::StatusCode,Extension};
 use rootcause::{Report, prelude::ResultExt};
 
-use crate::dto::{CreateProductRequest, HealthResponse, ProductResponse};
+use crate::dto::{
+    CreateProductRequest, CreateProductResponse, HealthResponse, ProductListResponse,
+    ProductResponse,
+};
 use crate::state::AppState;
 use crate::app_error::{AppError, AppErrorKind};
 
@@ -16,14 +19,16 @@ pub async fn health() -> Json<HealthResponse> {
 pub async fn list_products(
     State(state): State<AppState>,
     Extension(request_id): Extension<String>,
-) -> Result<Json<Vec<ProductResponse>>, AppError> {
+) -> Result<Json<ProductListResponse>, AppError> {
     let products = state
         .catalog
         .list_products(&state.db)
         .await
         .map_err(|error| AppError::from_catalog(error, request_id))?;
 
-    Ok(Json(products.into_iter().map(ProductResponse::from).collect()))
+    Ok(Json(ProductListResponse {
+        products: products.into_iter().map(ProductResponse::from).collect(),
+    }))
 }
 
 
@@ -31,8 +36,10 @@ pub async fn list_products(
 pub async fn create_product(
     State(state): State<AppState>,
     Extension(request_id): Extension<String>,
-    Json(request): Json<CreateProductRequest>,
-) -> Result<(StatusCode, Json<ProductResponse>), AppError> {
+    payload: Result<Json<CreateProductRequest>, JsonRejection>,
+) -> Result<(StatusCode, Json<CreateProductResponse>), AppError> {
+    let Json(request) = payload
+        .map_err(|rejection| AppError::from_json_rejection(rejection, request_id.clone()))?;
     let product_handle = request.handle.clone();
 
     let product = state
@@ -57,7 +64,7 @@ pub async fn create_product(
         "Product created"
     );
 
-    Ok((StatusCode::CREATED, Json(product.into())))
+    Ok((StatusCode::CREATED, Json(CreateProductResponse { product: product.into() })))
 }
 
 pub async fn not_found(Extension(request_id): Extension<String>) -> AppError {

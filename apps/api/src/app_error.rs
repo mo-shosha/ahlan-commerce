@@ -1,5 +1,5 @@
 
-use axum::{ http::StatusCode,response::IntoResponse,Json};
+use axum::{ extract::rejection::JsonRejection, http::StatusCode,response::IntoResponse,Json};
 use rootcause::Report;
 use serde::Serialize;
 use catalog::CatalogError;
@@ -99,6 +99,11 @@ impl AppError {
                     "Product title is required.".to_string(),
                 )
             }
+            catalog::CatalogError::InvalidHandle => {
+                AppErrorKind::ValidationFailed(
+                    "Handle must use lowercase letters, digits, and single hyphens, for example coffee-mug.".to_string(),
+                )
+            }
             catalog::CatalogError::ValueTooLarge { field, max } => {
                 AppErrorKind::ValidationFailed(format!("{field} must be at most {max}."))
             }
@@ -111,6 +116,10 @@ impl AppError {
         };
 
         Self::new(kind, request_id)
+    }
+
+    pub fn from_json_rejection(rejection: JsonRejection, request_id: String) -> Self {
+        Self::new(AppErrorKind::ValidationFailed(rejection.body_text()), request_id)
     }
 
     fn from_storage(cause: sqlx::Error, request_id: String) -> Self {
