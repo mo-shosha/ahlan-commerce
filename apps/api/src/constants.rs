@@ -14,7 +14,7 @@ pub mod defaults {
     use std::time::Duration;
 
     pub const API_ADDR: &str = "0.0.0.0:3000";
-    pub const DATABASE_URL_EXAMPLE: &str = "postgres://postgres::5432/ahlan_commerce";
+    pub const DATABASE_URL_EXAMPLE: &str = "postgres://postgres:postgres@localhost:5433/ahlan_commerce";
     pub const DB_MAX_CONNECTIONS: u32 = 5;
     pub const DB_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(3);
 }

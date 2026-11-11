@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://dekit.run/schemas/dekit.json
+
+tasks:
+  db:
+    label: PostgreSQL
+    cmd: ["make", "db-run"]
+    ready: {cmd: ["make", "--silent", "db-health"], interval: 3s, timeout: 60s}
+    stop: {cmd: ["make", "db-stop"], timeout: 30s}
+
+  api:
+    label: Axum API
+    cmd: ["make", "run-api"]
+    deps: [db]
+    ready: {http: "http://localhost:3000/health"}
+    autostart: true
