@@ -5,12 +5,12 @@ edition.workspace = true
 
 [dependencies]
 catalog.workspace = true
+db.workspace = true
 
 axum.workspace = true
 chrono = { workspace = true, features = ["serde"] }
 rootcause.workspace = true
 serde.workspace = true
-sqlx.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 uuid = { workspace = true, features = ["serde"] }
@@ -20,6 +20,7 @@ tower-http = { version = "0.7.1", features = ["trace"] }
 
 [dev-dependencies]
 catalog = { workspace = true, features = ["test-support"] }
+db = { workspace = true, features = ["test-support"] }
 
 http-body-util.workspace = true
 serde_json.workspace = true

@@ -113,6 +113,16 @@ impl AppError {
             catalog::CatalogError::Storage(cause) => {
                 return Self::from_storage(cause, request_id);
             }
+            error @ catalog::CatalogError::InvalidStoredValue { .. } => {
+                return Self::internal(Report::from(error), request_id);
+            }
+
+            catalog::CatalogError::ProductNotFound => {
+                AppErrorKind::NotFound
+            }
+            catalog::CatalogError::InvalidProductId => {
+                AppErrorKind::ValidationFailed("Product ID is invalid.".to_string())
+            }
         };
 
         Self::new(kind, request_id)
@@ -122,11 +132,9 @@ impl AppError {
         Self::new(AppErrorKind::ValidationFailed(rejection.body_text()), request_id)
     }
 
-    fn from_storage(cause: sqlx::Error, request_id: String) -> Self {
+    fn from_storage(cause: db::DbError, request_id: String) -> Self {
         let kind = match &cause {
-            sqlx::Error::PoolTimedOut | sqlx::Error::PoolClosed | sqlx::Error::Io(_) => {
-                AppErrorKind::DependencyUnavailable
-            }
+            db::DbError::Unavailable(_) => AppErrorKind::DependencyUnavailable,
             _ => AppErrorKind::InternalError,
         };
 

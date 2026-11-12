@@ -1,8 +1,11 @@
 use std::sync::Arc;
 
-use sqlx::PgPool;
+use db::Pool;
+use db::products::{self, ProductPublication};
 
-use crate::{Clock, IdGenerator, NewProduct, Product, CatalogError, store};
+use crate::product::published_at;
+use crate::records::{from_record, from_records, to_record};
+use crate::{Clock, IdGenerator, NewProduct, Product, ProductId, CatalogError};
 
 
 pub struct ProductCatalog {
@@ -16,25 +19,45 @@ impl ProductCatalog {
     }
 
 
-    pub async fn create_product(&self, db: &PgPool, input: NewProduct) -> Result<Product, CatalogError> {
+    pub async fn create_product(&self, db: &Pool, input: NewProduct) -> Result<Product, CatalogError> {
         let product = self.new_product(input)?;
 
-        store::insert_product(db, &product).await
+        let created = products::create_product(db, &to_record(&product)?).await?;
+        from_record(created)
     }
 
 
-    pub async fn list_products(&self, db: &PgPool) -> Result<Vec<Product>, CatalogError> {
-        store::list_products(db).await
+    pub async fn list_products(&self, db: &Pool) -> Result<Vec<Product>, CatalogError> {
+        from_records(products::list_products(db).await?)
+    }
+
+    pub async fn list_published_products(&self, db: &Pool) -> Result<Vec<Product>, CatalogError> {
+        from_records(products::list_published_products(db).await?)
+    }
+
+    pub async fn set_product_publication(
+        &self,
+        db: &Pool,
+        product_id: &str,
+        published: bool,
+    ) -> Result<Product, CatalogError> {
+        let product_id = parse_product_id(product_id)?;
+        let now = self.clock.now();
+        let change = ProductPublication {
+            id: product_id.as_uuid(),
+            published,
+            published_at: published_at(published, now),
+            updated_at: now,
+        };
+
+        let updated = products::update_product_publication(db, &change)
+            .await?
+            .ok_or(CatalogError::ProductNotFound)?;
+        from_record(updated)
     }
 
     fn new_product(&self, input: NewProduct) -> Result<Product, CatalogError> {
-        if input.title.trim().is_empty() {
-            return Err(CatalogError::ValidationFailed);
-        }
-
-        if !is_url_safe_handle(&input.handle) {
-            return Err(CatalogError::InvalidHandle);
-        }
+        validate(&input)?;
 
         Ok(Product::create(
             self.ids.new_product_id(),
@@ -42,6 +65,24 @@ impl ProductCatalog {
             self.clock.now(),
         ))
     }
+}
+
+fn validate(input: &NewProduct) -> Result<(), CatalogError> {
+    if input.title.trim().is_empty() {
+        return Err(CatalogError::ValidationFailed);
+    }
+
+    if !is_url_safe_handle(&input.handle) {
+        return Err(CatalogError::InvalidHandle);
+    }
+
+    Ok(())
+}
+
+fn parse_product_id(raw: &str) -> Result<ProductId, CatalogError> {
+    uuid::Uuid::parse_str(raw)
+        .map(ProductId::from_uuid)
+        .map_err(|_| CatalogError::InvalidProductId)
 }
 
 fn is_url_safe_handle(handle: &str) -> bool {

@@ -15,5 +15,23 @@ pub enum CatalogError {
     DuplicateProductHandle,
 
     #[error("Product storage failed")]
-    Storage(#[from] sqlx::Error),
+    Storage(#[source] db::DbError),
+
+    #[error("Stored {field} is out of range: {value}")]
+    InvalidStoredValue { field: &'static str, value: i32 },
+
+    #[error("Product not found")]
+    ProductNotFound,
+
+    #[error("Product ID is invalid")]
+    InvalidProductId,
+}
+
+impl From<db::DbError> for CatalogError {
+    fn from(error: db::DbError) -> Self {
+        match error {
+            db::DbError::DuplicateProductHandle => Self::DuplicateProductHandle,
+            other => Self::Storage(other),
+        }
+    }
 }

@@ -15,6 +15,7 @@ This document describes the common development commands available in the project
 | `make db-health` | Exits with 0 only when PostgreSQL accepts connections. | `docker compose exec -T db pg_isready --host=127.0.0.1 --username=postgres --dbname=ahlan_commerce` |
 | `make db-stop` | Stops the PostgreSQL container. The container and the `db-data` volume are kept. | `docker compose stop db` |
 | `make db-migrate` | Applies pending Atlas migrations to the local database. | `atlas migrate apply --env local` |
+| `make cornucopia-generate` | Regenerates `packages/db/generated/` from `db/queries/`, checked against a temporary database built from `db/migrations/`. Safe to rerun. | `cornucopia fresh --url <server> --queries-path db/queries --destination packages/db/generated --sync false --async true db/migrations/*.sql` |
 | `make health` | Checks whether the API health endpoint responds successfully. | `curl --fail http://localhost:3000/health` |
 
 ## Notes
@@ -26,6 +27,8 @@ This document describes the common development commands available in the project
   when it is not already set, and builds the port from `AHLAN_DB_PORT` (default `5433`).
   Set either variable to override it.
 - Atlas must be installed before running database migrations.
+- Cornucopia (`cargo install cornucopia`, 1.0+) must be installed, and PostgreSQL running,
+  before `make cornucopia-generate`. Set `CORNUCOPIA_SERVER_URL` to use another server.
 - The API must be running before executing the health check.
 
 ## Running with DeKit

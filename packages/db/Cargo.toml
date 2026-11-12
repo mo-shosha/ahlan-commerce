@@ -1,0 +1,20 @@
+[package]
+name = "db"
+version.workspace = true
+edition.workspace = true
+
+[features]
+# Exposes `testing::TestDb` (throwaway schema with migrations applied) for tests in other crates.
+test-support = ["dep:tokio"]
+
+[dependencies]
+db-generated.workspace = true
+
+chrono.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, optional = true }
+uuid.workspace = true
+
+[dev-dependencies]
+db = { workspace = true, features = ["test-support"] }
+tokio.workspace = true

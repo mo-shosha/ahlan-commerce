@@ -1,8 +1,6 @@
-use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Duration;
 
-use api::{config::Config, constants::{env_keys, routes}, db, router, state::AppState};
+use api::{config::Config, constants::{env_keys, routes}, router, state::AppState};
 use axum::{
     Router,
     body::Body,
@@ -12,111 +10,25 @@ use catalog::{
     ProductCatalog,
     testing::{FixedClock, FixedIds},
 };
+use db::testing::TestDb;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
-use sqlx::{AssertSqlSafe, PgPool, postgres::PgConnectOptions};
 use tower::ServiceExt;
-use uuid::Uuid;
 
 const FIRST_ID: &str = "018f7b2a-9f62-7d0c-8c4f-7a1f37c1d001";
 const SECOND_ID: &str = "018f7b2a-9f62-7d0c-8c4f-7a1f37c1d002";
 const NOW: &str = "2026-01-01T00:00:00Z";
-// All tests connect at once, so connection setup can take longer than the API's request timeout.
-const TEST_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
-const MIGRATIONS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../db/migrations");
-
-fn migration_files() -> Vec<(String, String)> {
-    let mut paths: Vec<_> = std::fs::read_dir(MIGRATIONS_DIR)
-        .expect("read db/migrations")
-        .map(|entry| entry.expect("read migration entry").path())
-        .filter(|path| path.extension().is_some_and(|ext| ext == "sql"))
-        .collect();
-    paths.sort();
-    assert!(!paths.is_empty(), "no migrations in db/migrations; run atlas migrate diff");
-
-    paths
-        .into_iter()
-        .map(|path| {
-            let name = path.file_name().unwrap().to_string_lossy().into_owned();
-            let sql = std::fs::read_to_string(&path).expect("read migration file");
-            (name, sql)
-        })
-        .collect()
-}
-
-struct TestDb {
-    database_url: String,
-    schema: String,
-}
-
-impl TestDb {
-    async fn create() -> Self {
-        let database_url = std::env::var(env_keys::DATABASE_URL).unwrap_or_else(|_| {
-            panic!("set {} to run the API tests against PostgreSQL", env_keys::DATABASE_URL)
-        });
-        let schema = format!("test_{}", Uuid::now_v7().simple());
-        let test_db = Self { database_url, schema };
-
-        let admin = test_db.admin_pool().await;
-        sqlx::raw_sql(AssertSqlSafe(format!("create schema {}", test_db.schema)))
-            .execute(&admin)
-            .await
-            .expect("create test schema");
-        admin.close().await;
-
-        let pool = test_db.connect().await;
-        for (name, sql) in migration_files() {
-            sqlx::raw_sql(AssertSqlSafe(sql))
-                .execute(&pool)
-                .await
-                .unwrap_or_else(|err| panic!("apply {name}: {err}"));
-        }
-        pool.close().await;
-
-        test_db
-    }
-
-    async fn connect(&self) -> PgPool {
-        let options = PgConnectOptions::from_str(&self.database_url)
-            .expect("valid database url")
-            .options([("search_path", self.schema.as_str())]);
-
-        db::pool_options()
-            .acquire_timeout(TEST_ACQUIRE_TIMEOUT)
-            .connect_with(options)
-            .await
-            .expect("connect to test schema")
-    }
-
-    async fn admin_pool(&self) -> PgPool {
-        db::pool_options()
-            .max_connections(1)
-            .acquire_timeout(TEST_ACQUIRE_TIMEOUT)
-            .connect(&self.database_url)
-            .await
-            .expect("connect to PostgreSQL")
-    }
-
-    async fn drop(self) {
-        let admin = self.admin_pool().await;
-        sqlx::raw_sql(AssertSqlSafe(format!("drop schema {} cascade", self.schema)))
-            .execute(&admin)
-            .await
-            .expect("drop test schema");
-        admin.close().await;
-    }
-}
 
 async fn app_for(test_db: &TestDb, ids: &[&str]) -> Router {
     let config = Config::from_lookup(|key| {
-        (key == env_keys::DATABASE_URL).then(|| test_db.database_url.clone())
+        (key == env_keys::DATABASE_URL).then(|| test_db.database_url().to_string())
     })
     .expect("test config is valid");
     let catalog = ProductCatalog::new(
         Arc::new(FixedIds::new(ids.iter().copied())),
         Arc::new(FixedClock::from_rfc3339(NOW)),
     );
-    router(AppState::new(config, test_db.connect().await, catalog))
+    router(AppState::new(config, test_db.pool().await, catalog))
 }
 
 async fn test_app() -> (Router, TestDb) {
@@ -148,6 +60,15 @@ fn post_json(uri: &str, body: Value) -> Request<Body> {
         .uri(uri)
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(body.to_string()))
+        .unwrap()
+}
+
+fn patch_publication(id: &str, published: bool) -> Request<Body> {
+    Request::builder()
+        .method(Method::PATCH)
+        .uri(routes::PRODUCT_PUBLICATION.replace("{id}", id))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({ "published": published }).to_string()))
         .unwrap()
 }
 
@@ -298,6 +219,80 @@ async fn products_survive_an_api_restart() {
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body, json!({ "products": [created["product"]] }));
+    test_db.drop().await;
+}
+
+#[tokio::test]
+async fn published_list_returns_only_published_products() {
+    let (app, test_db) = test_app().await;
+
+    send(&app, post_json(routes::PRODUCTS, laptop_request())).await;
+    send(&app, post_json(routes::PRODUCTS, phone_request())).await;
+    let (status, body) = send(&app, get(routes::PUBLISHED_PRODUCTS)).await;
+
+    assert_eq!(status, StatusCode::OK);
+    let products = body["products"].as_array().expect("products is an array");
+    assert_eq!(products.len(), 1);
+    assert_eq!(products[0]["id"], FIRST_ID);
+    assert_eq!(products[0]["published"], true);
+    assert_eq!(products[0]["published_at"], NOW);
+    test_db.drop().await;
+}
+
+#[tokio::test]
+async fn publishing_a_draft_sets_published_at_and_lists_it() {
+    let (app, test_db) = test_app().await;
+    send(&app, post_json(routes::PRODUCTS, phone_request())).await;
+
+    let (status, body) = send(&app, patch_publication(FIRST_ID, true)).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["id"], FIRST_ID);
+    assert_eq!(body["published"], true);
+    assert_eq!(body["published_at"], NOW);
+    assert_eq!(body["updated_at"], NOW);
+
+    let (_, published) = send(&app, get(routes::PUBLISHED_PRODUCTS)).await;
+    assert_eq!(published, json!({ "products": [body] }));
+    test_db.drop().await;
+}
+
+#[tokio::test]
+async fn unpublishing_clears_published_at_and_hides_it() {
+    let (app, test_db) = test_app().await;
+    send(&app, post_json(routes::PRODUCTS, laptop_request())).await;
+
+    let (status, body) = send(&app, patch_publication(FIRST_ID, false)).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["published"], false);
+    assert_eq!(body["published_at"], Value::Null);
+    assert_eq!(body["description"], "Light laptop for travel.");
+
+    let (_, published) = send(&app, get(routes::PUBLISHED_PRODUCTS)).await;
+    assert_eq!(published, json!({ "products": [] }));
+    test_db.drop().await;
+}
+
+#[tokio::test]
+async fn publication_of_unknown_product_returns_not_found() {
+    let (app, test_db) = test_app().await;
+
+    let (status, body) = send(&app, patch_publication(FIRST_ID, true)).await;
+
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["error"]["code"], "not_found");
+    test_db.drop().await;
+}
+
+#[tokio::test]
+async fn publication_with_malformed_id_returns_validation_error() {
+    let (app, test_db) = test_app().await;
+
+    let (status, body) = send(&app, patch_publication("not-a-uuid", true)).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "validation_failed");
     test_db.drop().await;
 }
 

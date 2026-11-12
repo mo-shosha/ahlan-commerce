@@ -1,0 +1,9 @@
+use-workspace-deps = true
+
+[manifest.package]
+name = "db-generated"
+version = "0.1.0"
+publish = false
+
+[types.mapping]
+"pg_catalog.timestamptz" = "chrono::DateTime<chrono::Utc>"

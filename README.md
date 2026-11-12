@@ -6,18 +6,24 @@
 
 ```text
 apps/api/          HTTP transport: routes, config, DTOs, thin handlers, DB pool setup
-packages/catalog/  Product domain: product flows, UUIDv7 IDs, clock boundary, plain SQL store
+packages/catalog/  Product domain: product flows, UUIDv7 IDs, clock boundary, record mapping
+packages/db/       Data access layer: the only code that runs SQL (wraps generated queries)
+packages/db/generated/  Cornucopia output (crate db-generated); never edit by hand
 db/schema/         Desired schema (source of truth for Atlas)
 db/migrations/     Atlas-generated migrations
+db/queries/        Named SQL queries (source of truth for Cornucopia)
 db/docker-init/    One-time init scripts for the PostgreSQL container
 ```
 
 Request flow:
 
 ```text
-route constant -> handler -> catalog domain function -> plain SQL (sqlx) -> PostgreSQL
+route constant -> handler -> catalog domain function -> db (DAL) -> generated query -> PostgreSQL
                                                      -> response DTO
 ```
+
+See `docs/dal.md` for how Atlas, Cornucopia, and the DAL fit together, and
+`docs/query-contract.md` for the query files.
 
 ## Database
 

@@ -34,9 +34,13 @@ impl Product {
             price_cents: input.price_cents,
             inventory_quantity: input.inventory_quantity,
             published: input.published,
-            published_at: input.published.then_some(now),
+            published_at: published_at(input.published, now),
             created_at: now,
             updated_at: now,
         }
     }
+}
+
+pub(crate) fn published_at(published: bool, now: Timestamp) -> Option<Timestamp> {
+    published.then_some(now)
 }

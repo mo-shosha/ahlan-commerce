@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use api::{config::Config, constants::defaults, db, router, state::AppState};
+use api::{config::Config, constants::defaults, router, state::AppState};
 use catalog::{ProductCatalog, SystemClock, UuidV7Generator};
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
@@ -22,7 +22,11 @@ async fn main() {
     let config = Config::from_env().unwrap_or_else(|err| panic!("invalid configuration: {err}"));
     let addr = config.api_addr;
 
-    let pool = db::connect(&config.database_url)
+    let pool_settings = db::PoolSettings {
+        max_size: defaults::DB_MAX_CONNECTIONS,
+        timeout: defaults::DB_ACQUIRE_TIMEOUT,
+    };
+    let pool = db::connect(&config.database_url, pool_settings)
         .await
         .unwrap_or_else(|err| panic!("failed to connect to PostgreSQL: {err}"));
 

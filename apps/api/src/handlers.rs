@@ -1,9 +1,9 @@
-use axum::{Json, extract::{State, rejection::JsonRejection}, http::StatusCode,Extension};
+use axum::{Json, extract::{Path, State, rejection::JsonRejection}, http::StatusCode,Extension};
 use rootcause::{Report, prelude::ResultExt};
 
 use crate::dto::{
     CreateProductRequest, CreateProductResponse, HealthResponse, ProductListResponse,
-    ProductResponse,
+    ProductPublicationRequest, ProductResponse,
 };
 use crate::state::AppState;
 use crate::app_error::{AppError, AppErrorKind};
@@ -31,7 +31,55 @@ pub async fn list_products(
     }))
 }
 
+pub async fn list_published_products(
+    State(state): State<AppState>,
+    Extension(request_id): Extension<String>,
+) -> Result<Json<ProductListResponse>, AppError> {
+    let products = state
+        .catalog
+        .list_published_products(&state.db)
+        .await
+        .map_err(|error| AppError::from_catalog(error, request_id))?;
 
+    Ok(Json(ProductListResponse {
+        products: products.into_iter().map(ProductResponse::from).collect(),
+    }))
+}
+
+pub async fn set_product_publication(
+    State(state): State<AppState>,
+    Extension(request_id): Extension<String>,
+    Path(product_id): Path<String>,
+    payload: Result<Json<ProductPublicationRequest>, JsonRejection>,
+) -> Result<Json<ProductResponse>, AppError> {
+    let Json(request) = payload
+        .map_err(|rejection| AppError::from_json_rejection(rejection, request_id.clone()))?;
+
+    let product = state
+        .catalog
+        .set_product_publication(&state.db, &product_id, request.published)
+        .await
+        .map_err(|error| {
+            let app_error = AppError::from_catalog(error, request_id.clone());
+            tracing::warn!(
+                operation = "set_product_publication",
+                product_id = %product_id,
+                error_code = app_error.error_code(),
+                "Product publication change rejected"
+            );
+            app_error
+        })?;
+
+    tracing::info!(
+        operation = "set_product_publication",
+        product_id = %product.id,
+        product_handle = %product.handle,
+        published = product.published,
+        "Product publication changed"
+    );
+
+    Ok(Json(ProductResponse::from(product)))
+}
 
 pub async fn create_product(
     State(state): State<AppState>,

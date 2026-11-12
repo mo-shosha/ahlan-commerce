@@ -30,6 +30,11 @@ impl From<CreateProductRequest> for NewProduct {
     }
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ProductPublicationRequest {
+    pub published: bool,
+}
+
 #[derive(Debug, Serialize)]
 pub struct CreateProductResponse {
     pub product: ProductResponse,

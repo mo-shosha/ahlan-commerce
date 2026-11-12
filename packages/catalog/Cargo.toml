@@ -8,7 +8,8 @@ edition.workspace = true
 test-support = []
 
 [dependencies]
+db.workspace = true
+
 chrono.workspace = true
-sqlx.workspace = true
 uuid.workspace = true
 thiserror.workspace = true

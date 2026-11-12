@@ -1,6 +1,5 @@
 pub mod config;
 pub mod constants;
-pub mod db;
 pub mod dto;
 pub mod handlers;
 pub mod state;
@@ -68,6 +67,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             routes::PRODUCTS,
             get(handlers::list_products).post(handlers::create_product),
+        )
+        .route(
+            routes::PUBLISHED_PRODUCTS,
+            get(handlers::list_published_products),
+        )
+        .route(
+            routes::PRODUCT_PUBLICATION,
+            axum::routing::patch(handlers::set_product_publication),
         )
         .route(
             routes::SIMULATED_INTERNAL_FAILURE,
