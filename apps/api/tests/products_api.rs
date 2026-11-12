@@ -309,6 +309,24 @@ async fn duplicate_handle_returns_conflict() {
 }
 
 #[tokio::test]
+async fn duplicate_handle_keeps_only_the_first_product() {
+    let (app, test_db) = test_app().await;
+    let (_, first) = send(&app, post_json(routes::PRODUCTS, laptop_request())).await;
+    let mut second = phone_request();
+    second["handle"] = json!("laptop");
+
+    let (status, body) = send(&app, post_json(routes::PRODUCTS, second)).await;
+
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["error"]["message"], "Another product already uses this handle.");
+    assert!(body["error"]["request_id"].as_str().is_some_and(|id| !id.is_empty()));
+
+    let (_, list) = send(&app, get(routes::PRODUCTS)).await;
+    assert_eq!(list, json!({ "products": [first["product"]] }));
+    test_db.drop().await;
+}
+
+#[tokio::test]
 async fn blank_title_returns_validation_error() {
     let mut request = laptop_request();
     request["title"] = json!("  ");
@@ -361,6 +379,51 @@ async fn price_above_integer_column_returns_validation_error() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["error"]["code"], "validation_failed");
     assert_eq!(body["error"]["message"], "price_cents must be at most 2147483647.");
+    test_db.drop().await;
+}
+
+#[tokio::test]
+async fn inventory_above_integer_column_returns_validation_error() {
+    let (app, test_db) = test_app().await;
+    let mut request = laptop_request();
+    request["inventory_quantity"] = json!(u32::MAX);
+
+    let (status, body) = send(&app, post_json(routes::PRODUCTS, request)).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "validation_failed");
+    assert_eq!(body["error"]["message"], "inventory_quantity must be at most 2147483647.");
+    test_db.drop().await;
+}
+
+#[tokio::test]
+async fn malformed_json_returns_validation_error() {
+    let (app, test_db) = test_app().await;
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(routes::PRODUCTS)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"title": "Laptop","#))
+        .unwrap();
+
+    let (status, body) = send(&app, request).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "validation_failed");
+    test_db.drop().await;
+}
+
+#[tokio::test]
+async fn invalid_create_does_not_save_a_product() {
+    let (app, test_db) = test_app().await;
+    let mut request = laptop_request();
+    request["title"] = json!("  ");
+
+    let (status, _) = send(&app, post_json(routes::PRODUCTS, request)).await;
+    let (_, list) = send(&app, get(routes::PRODUCTS)).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(list, json!({ "products": [] }));
     test_db.drop().await;
 }
 

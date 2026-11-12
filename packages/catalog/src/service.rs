@@ -182,6 +182,15 @@ mod tests {
     }
 
     #[test]
+    fn new_product_rejects_empty_title() {
+        let empty = NewProduct { title: String::new(), ..laptop() };
+
+        let error = catalog().new_product(empty).unwrap_err();
+
+        assert!(matches!(error, CatalogError::ValidationFailed));
+    }
+
+    #[test]
     fn published_product_gets_published_at_from_clock() {
         let product = catalog().new_product(laptop()).expect("laptop is valid");
 
