@@ -1,13 +1,15 @@
 pub mod config;
 pub mod constants;
 pub mod dto;
+pub mod graphql;
 pub mod handlers;
 pub mod state;
 pub mod app_error;
 pub mod middleware;
-use axum::{Router, http::Request,http::Response, middleware::from_fn, routing::get,extract::MatchedPath,body::Body,
+use axum::{Router, http::Request,http::Response, middleware::from_fn, routing::{get, post},extract::MatchedPath,body::Body,
 };
 use crate::constants::routes;
+use crate::graphql::graphql_handler;
 use crate::state::AppState;
 use crate::middleware::request_id_middleware;
 
@@ -64,6 +66,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route(routes::ROOT, get(handlers::root))
         .route(routes::HEALTH, get(handlers::health))
+        .route(routes::GRAPHQL, post(graphql_handler))
         .route(
             routes::PRODUCTS,
             get(handlers::list_products).post(handlers::create_product),

@@ -1,0 +1,34 @@
+"""
+ISO-8601 UTC timestamp string, for example "2026-06-13T10:30:00Z".
+"""
+scalar DateTime
+
+type Product {
+  id: ID!
+  title: String!
+  handle: String!
+  description: String
+  priceCents: Int!
+  inventoryQuantity: Int!
+  published: Boolean!
+  publishedAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type Query {
+  products: [Product!]!
+}
+
+type Mutation {
+  productCreate(input: ProductCreateInput!): Product!
+}
+
+input ProductCreateInput {
+  title: String!
+  handle: String!
+  description: String
+  priceCents: Int!
+  inventoryQuantity: Int!
+  published: Boolean!
+}

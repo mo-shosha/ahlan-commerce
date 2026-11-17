@@ -20,10 +20,13 @@ Request flow:
 ```text
 route constant -> handler -> catalog domain function -> db (DAL) -> generated query -> PostgreSQL
                                                      -> response DTO
+
+POST /graphql  -> GraphQL schema -> resolver -> catalog domain -> db (DAL)
 ```
 
-See `docs/dal.md` for how Atlas, Cornucopia, and the DAL fit together, and
-`docs/query-contract.md` for the query files.
+See `docs/dal.md` for how Atlas, Cornucopia, and the DAL fit together,
+`docs/query-contract.md` for the query files, and `docs/graphql.md` for the
+GraphQL slice.
 
 ## Database
 

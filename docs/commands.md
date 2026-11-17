@@ -18,6 +18,8 @@ This document describes the common development commands available in the project
 | `make cornucopia-generate` | Regenerates `packages/db/generated/` from `db/queries/`, checked against a temporary database built from `db/migrations/`. Safe to rerun. | `cornucopia fresh --url <server> --queries-path db/queries --destination packages/db/generated --sync false --async true db/migrations/*.sql` |
 | `make health` | Checks whether the API health endpoint responds successfully. | `curl --fail http://localhost:3000/health` |
 
+GraphQL examples (query and create mutation) are in `docs/graphql.md`.
+
 ## Notes
 
 - Docker Desktop must be running before `make start`, `make db-start`, or `make db-run`.

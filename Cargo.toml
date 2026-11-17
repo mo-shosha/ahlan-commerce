@@ -13,6 +13,8 @@ db = { path = "packages/db" }
 db-generated = { path = "packages/db/generated" }
 
 axum = "0.8.9"
+async-graphql = { version = "7.2", features = ["chrono"] }
+async-graphql-axum = "7.2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 rootcause = "0.13.0"
 serde = { version = "1", features = ["derive"] }
