@@ -8,7 +8,9 @@ This document describes the common development commands available in the project
 | `make start` | Starts PostgreSQL and the API under DeKit and opens its console. | `dekit up` then `dekit attach` |
 | `make stop` | Stops every DeKit task and the DeKit runner (this stops the database container too). | `dekit down` |
 | `make run-api` | Runs the API server. | `cargo run -p api` |
+| `make run-admin` | Runs the React admin UI (Vite). API must already be on port 3000. | `npm --prefix apps/admin run dev` |
 | `make test` | Runs all workspace tests. | `cargo test --workspace` |
+| `make test-admin-e2e` | Playwright e2e for admin create/list (API on port 3000). | `npm --prefix apps/admin run test:e2e` |
 | `make lint` | Checks Rust formatting. | `cargo fmt --all -- --check` |
 | `make db-start` | Starts PostgreSQL using Docker Compose and waits until it is healthy. | `docker compose up -d --wait` |
 | `make db-run` | Starts PostgreSQL in the background, then follows its logs in the foreground. DeKit runs this as the `db` task. | `docker compose up --detach db` then `docker compose logs --follow db` |
@@ -32,6 +34,8 @@ GraphQL examples (query and create mutation) are in `docs/graphql.md`.
 - Cornucopia (`cargo install cornucopia`, 1.0+) must be installed, and PostgreSQL running,
   before `make cornucopia-generate`. Set `CORNUCOPIA_SERVER_URL` to use another server.
 - The API must be running before executing the health check.
+- The admin UI (`make run-admin` or `apps/admin` e2e) expects GraphQL at
+  `http://127.0.0.1:3000/graphql`. Vite proxies `/graphql` in dev and preview.
 
 ## Running with DeKit
 

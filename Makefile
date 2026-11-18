@@ -1,5 +1,5 @@
 
-.PHONY: help start stop run-api test lint db-start db-run db-health db-stop db-migrate cornucopia-generate health
+.PHONY: help start stop run-api run-admin test lint db-start db-run db-health db-stop db-migrate cornucopia-generate health test-admin-e2e
 
 COMPOSE := docker compose
 DB_SERVICE := db
@@ -21,7 +21,9 @@ help:
 	@echo "  make start"
 	@echo "  make stop"
 	@echo "  make run-api"
+	@echo "  make run-admin"
 	@echo "  make test"
+	@echo "  make test-admin-e2e"
 	@echo "  make lint"
 	@echo "  make db-start"
 	@echo "  make db-run"
@@ -41,8 +43,14 @@ stop:
 run-api:
 	cargo run -p api
 
+run-admin:
+	npm --prefix apps/admin run dev
+
 test:
 	cargo test --workspace
+
+test-admin-e2e:
+	npm --prefix apps/admin run test:e2e
 
 lint:
 	cargo fmt --all -- --check

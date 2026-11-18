@@ -6,6 +6,7 @@
 
 ```text
 apps/api/          HTTP transport: routes, config, DTOs, thin handlers, DB pool setup
+apps/admin/        React admin UI: TanStack Router, TanStack Query, thin GraphQL client
 packages/catalog/  Product domain: product flows, UUIDv7 IDs, clock boundary, record mapping
 packages/db/       Data access layer: the only code that runs SQL (wraps generated queries)
 packages/db/generated/  Cornucopia output (crate db-generated); never edit by hand
@@ -25,8 +26,9 @@ POST /graphql  -> GraphQL schema -> resolver -> catalog domain -> db (DAL)
 ```
 
 See `docs/dal.md` for how Atlas, Cornucopia, and the DAL fit together,
-`docs/query-contract.md` for the query files, and `docs/graphql.md` for the
-GraphQL slice.
+`docs/query-contract.md` for the query files, `docs/graphql.md` for the
+GraphQL slice, and `docs/client-choice.md` for why the admin UI uses a thin
+GraphQL wrapper with TanStack Query instead of Apollo Client by default.
 
 ## Database
 
