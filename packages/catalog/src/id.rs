@@ -21,8 +21,28 @@ impl fmt::Display for ProductId {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ImportJobId(Uuid);
+
+impl ImportJobId {
+    pub fn from_uuid(uuid: Uuid) -> Self {
+        Self(uuid)
+    }
+
+    pub fn as_uuid(&self) -> Uuid {
+        self.0
+    }
+}
+
+impl fmt::Display for ImportJobId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 pub trait IdGenerator: Send + Sync {
     fn new_product_id(&self) -> ProductId;
+    fn new_import_job_id(&self) -> ImportJobId;
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -31,6 +51,10 @@ pub struct UuidV7Generator;
 impl IdGenerator for UuidV7Generator {
     fn new_product_id(&self) -> ProductId {
         ProductId(Uuid::now_v7())
+    }
+
+    fn new_import_job_id(&self) -> ImportJobId {
+        ImportJobId(Uuid::now_v7())
     }
 }
 

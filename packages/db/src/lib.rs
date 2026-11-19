@@ -1,5 +1,6 @@
 mod error;
 mod pool;
+pub mod import_jobs;
 pub mod products;
 
 #[cfg(any(test, feature = "test-support"))]

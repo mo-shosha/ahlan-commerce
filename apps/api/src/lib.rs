@@ -79,6 +79,7 @@ pub fn router(state: AppState) -> Router {
             routes::PRODUCT_PUBLICATION,
             axum::routing::patch(handlers::set_product_publication),
         )
+        .route(routes::IMPORT_JOBS, post(handlers::create_import_job))
         .route(
             routes::SIMULATED_INTERNAL_FAILURE,
             get(handlers::simulated_internal_failure),

@@ -123,6 +123,10 @@ impl AppError {
             catalog::CatalogError::InvalidProductId => {
                 AppErrorKind::ValidationFailed("Product ID is invalid.".to_string())
             }
+            catalog::CatalogError::EmptyImportInputPath => {
+                AppErrorKind::ValidationFailed("input_path is required.".to_string())
+            }
+            catalog::CatalogError::ImportJobNotFound => AppErrorKind::NotFound,
         };
 
         Self::new(kind, request_id)

@@ -6,14 +6,16 @@
 
 ```text
 apps/api/          HTTP transport: routes, config, DTOs, thin handlers, DB pool setup
+apps/worker/       Background import worker: claims queued jobs and imports products
 apps/admin/        React admin UI: TanStack Router, TanStack Query, thin GraphQL client
-packages/catalog/  Product domain: product flows, UUIDv7 IDs, clock boundary, record mapping
+packages/catalog/  Product domain: product flows, import jobs, UUIDv7 IDs, clock boundary
 packages/db/       Data access layer: the only code that runs SQL (wraps generated queries)
 packages/db/generated/  Cornucopia output (crate db-generated); never edit by hand
 db/schema/         Desired schema (source of truth for Atlas)
 db/migrations/     Atlas-generated migrations
 db/queries/        Named SQL queries (source of truth for Cornucopia)
 db/docker-init/    One-time init scripts for the PostgreSQL container
+fixtures/          Sample import JSON files for the worker
 ```
 
 Request flow:
@@ -21,6 +23,8 @@ Request flow:
 ```text
 route constant -> handler -> catalog domain function -> db (DAL) -> generated query -> PostgreSQL
                                                      -> response DTO
+
+POST /api/import-jobs -> enqueue queued job row -> worker claims later -> create products
 
 POST /graphql  -> GraphQL schema -> resolver -> catalog domain -> db (DAL)
 ```
@@ -58,18 +62,27 @@ contract is in `docs/product-api-contract.md`.
 Start PostgreSQL and the API together under [DeKit](https://dekit.run):
 
 ```powershell
-make start   # opens the DeKit console with a PostgreSQL task and an Axum API task
-make stop    # stops both; the database container and its data are kept
+make start   # opens the DeKit console with PostgreSQL, API, and import worker tasks
+make stop    # stops them; the database container and its data are kept
 ```
 
-The API task starts only once PostgreSQL accepts connections. See `docs/commands.md`
-for the individual targets.
+The API and worker tasks start only once PostgreSQL accepts connections. See
+`docs/commands.md` for the individual targets.
 
-To run the API on its own instead:
+To run the API or worker on its own instead:
 
 ```powershell
 $env:DATABASE_URL = "postgres://postgres:postgres@localhost:5433/ahlan_commerce"
 cargo run -p api
+cargo run -p worker
+```
+
+Enqueue a fixture import (API must be running; worker picks it up):
+
+```powershell
+curl -X POST http://localhost:3000/api/import-jobs `
+  -H "content-type: application/json" `
+  -d '{"input_path":"fixtures/products-import.json"}'
 ```
 
 Configuration is read once at startup:
@@ -78,6 +91,7 @@ Configuration is read once at startup:
 |---|---|---|
 | `AHLAN_API_ADDR` | `0.0.0.0:3000` | Address the API binds to |
 | `DATABASE_URL` | required | PostgreSQL connection URL |
+| `AHLAN_WORKER_POLL_INTERVAL_MS` | `2000` | How often the worker looks for queued jobs |
 
 The API connects at startup and fails fast if PostgreSQL is unreachable. One
 connection pool (max 5 connections, 3 s acquire timeout) is shared through `AppState`.

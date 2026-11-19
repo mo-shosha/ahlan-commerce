@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use api::{config::Config, constants::defaults, router, state::AppState};
-use catalog::{ProductCatalog, SystemClock, UuidV7Generator};
+use catalog::{ImportJobService, ProductCatalog, SystemClock, UuidV7Generator};
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
@@ -35,8 +35,11 @@ async fn main() {
         "PostgreSQL connection pool ready"
     );
 
-    let catalog = ProductCatalog::new(Arc::new(UuidV7Generator), Arc::new(SystemClock));
-    let state = AppState::new(config, pool, catalog);
+    let ids = Arc::new(UuidV7Generator);
+    let clock = Arc::new(SystemClock);
+    let catalog = ProductCatalog::new(ids.clone(), clock.clone());
+    let import_jobs = ImportJobService::new(ids, clock);
+    let state = AppState::new(config, pool, catalog, import_jobs);
 
     let listener = TcpListener::bind(addr)
         .await

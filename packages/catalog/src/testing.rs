@@ -5,14 +5,13 @@ use std::sync::Mutex;
 
 use uuid::Uuid;
 
-use crate::{Clock, IdGenerator, ProductId, Timestamp};
+use crate::{Clock, IdGenerator, ImportJobId, ProductId, Timestamp};
 
 pub struct FixedIds {
-    remaining: Mutex<VecDeque<ProductId>>,
+    remaining: Mutex<VecDeque<Uuid>>,
 }
 
 impl FixedIds {
-
     pub fn new<'a>(ids: impl IntoIterator<Item = &'a str>) -> Self {
         let remaining = ids
             .into_iter()
@@ -20,7 +19,7 @@ impl FixedIds {
                 let uuid = Uuid::parse_str(raw)
                     .unwrap_or_else(|err| panic!("invalid fixed id {raw:?}: {err}"));
                 assert_eq!(uuid.get_version_num(), 7, "fixed id {raw:?} is not a UUIDv7");
-                ProductId::from_uuid(uuid)
+                uuid
             })
             .collect();
 
@@ -28,15 +27,23 @@ impl FixedIds {
             remaining: Mutex::new(remaining),
         }
     }
-}
 
-impl IdGenerator for FixedIds {
-    fn new_product_id(&self) -> ProductId {
+    fn next_uuid(&self) -> Uuid {
         self.remaining
             .lock()
             .expect("fixed id lock poisoned")
             .pop_front()
             .expect("FixedIds ran out of ids")
+    }
+}
+
+impl IdGenerator for FixedIds {
+    fn new_product_id(&self) -> ProductId {
+        ProductId::from_uuid(self.next_uuid())
+    }
+
+    fn new_import_job_id(&self) -> ImportJobId {
+        ImportJobId::from_uuid(self.next_uuid())
     }
 }
 

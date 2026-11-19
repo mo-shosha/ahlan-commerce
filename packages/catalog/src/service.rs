@@ -8,6 +8,7 @@ use crate::records::{from_record, from_records, to_record};
 use crate::{Clock, IdGenerator, NewProduct, Product, ProductId, CatalogError};
 
 
+#[derive(Clone)]
 pub struct ProductCatalog {
     ids: Arc<dyn IdGenerator>,
     clock: Arc<dyn Clock>,

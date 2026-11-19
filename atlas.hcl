@@ -10,7 +10,7 @@ locals {
 }
 
 env "local" {
-  src = "file://db/schema/products.sql"
+  src = "file://db/schema"
   url = local.url
   dev = local.dev_url
 

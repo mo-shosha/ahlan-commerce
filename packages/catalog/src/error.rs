@@ -25,6 +25,12 @@ pub enum CatalogError {
 
     #[error("Product ID is invalid")]
     InvalidProductId,
+
+    #[error("Import input_path is required")]
+    EmptyImportInputPath,
+
+    #[error("Import job not found")]
+    ImportJobNotFound,
 }
 
 impl From<db::DbError> for CatalogError {

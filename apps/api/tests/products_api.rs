@@ -7,7 +7,7 @@ use axum::{
     http::{Method, Request, StatusCode, header},
 };
 use catalog::{
-    ProductCatalog,
+    ImportJobService, ProductCatalog,
     testing::{FixedClock, FixedIds},
 };
 use db::testing::TestDb;
@@ -24,11 +24,11 @@ async fn app_for(test_db: &TestDb, ids: &[&str]) -> Router {
         (key == env_keys::DATABASE_URL).then(|| test_db.database_url().to_string())
     })
     .expect("test config is valid");
-    let catalog = ProductCatalog::new(
-        Arc::new(FixedIds::new(ids.iter().copied())),
-        Arc::new(FixedClock::from_rfc3339(NOW)),
-    );
-    router(AppState::new(config, test_db.pool().await, catalog))
+    let ids = Arc::new(FixedIds::new(ids.iter().copied()));
+    let clock = Arc::new(FixedClock::from_rfc3339(NOW));
+    let catalog = ProductCatalog::new(ids.clone(), clock.clone());
+    let import_jobs = ImportJobService::new(ids, clock);
+    router(AppState::new(config, test_db.pool().await, catalog, import_jobs))
 }
 
 async fn test_app() -> (Router, TestDb) {

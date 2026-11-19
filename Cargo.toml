@@ -1,6 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["apps/api", "packages/catalog", "packages/db", "packages/db/generated"]
+members = [
+    "apps/api",
+    "apps/worker",
+    "packages/catalog",
+    "packages/db",
+    "packages/db/generated",
+]
 
 [workspace.package]
 version = "0.1.0"

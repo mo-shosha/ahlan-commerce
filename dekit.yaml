@@ -13,3 +13,10 @@ tasks:
     deps: [db]
     ready: {http: "http://localhost:3000/health"}
     autostart: true
+
+  worker:
+    label: Import Worker
+    cmd: ["make", "run-worker"]
+    deps: [db]
+    ready: {cmd: ["true"], interval: 1s, timeout: 30s}
+    autostart: true

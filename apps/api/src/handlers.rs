@@ -2,8 +2,9 @@ use axum::{Json, extract::{Path, State, rejection::JsonRejection}, http::StatusC
 use rootcause::{Report, prelude::ResultExt};
 
 use crate::dto::{
-    CreateProductRequest, CreateProductResponse, HealthResponse, ProductListResponse,
-    ProductPublicationRequest, ProductResponse,
+    CreateImportJobRequest, CreateImportJobResponse, CreateProductRequest, CreateProductResponse,
+    HealthResponse, ImportJobResponse, ProductListResponse, ProductPublicationRequest,
+    ProductResponse,
 };
 use crate::state::AppState;
 use crate::app_error::{AppError, AppErrorKind};
@@ -113,6 +114,43 @@ pub async fn create_product(
     );
 
     Ok((StatusCode::CREATED, Json(CreateProductResponse { product: product.into() })))
+}
+
+pub async fn create_import_job(
+    State(state): State<AppState>,
+    Extension(request_id): Extension<String>,
+    payload: Result<Json<CreateImportJobRequest>, JsonRejection>,
+) -> Result<(StatusCode, Json<CreateImportJobResponse>), AppError> {
+    let Json(request) = payload
+        .map_err(|rejection| AppError::from_json_rejection(rejection, request_id.clone()))?;
+
+    let job = state
+        .import_jobs
+        .enqueue(&state.db, request.input_path)
+        .await
+        .map_err(|error| {
+            let app_error = AppError::from_catalog(error, request_id.clone());
+            tracing::warn!(
+                operation = "create_import_job",
+                error_code = app_error.error_code(),
+                "Import job enqueue rejected"
+            );
+            app_error
+        })?;
+
+    tracing::info!(
+        operation = "create_import_job",
+        job_id = %job.id,
+        status = %job.status,
+        "Import job queued"
+    );
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(CreateImportJobResponse {
+            job: ImportJobResponse::from(job),
+        }),
+    ))
 }
 
 pub async fn not_found(Extension(request_id): Extension<String>) -> AppError {

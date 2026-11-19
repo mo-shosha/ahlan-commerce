@@ -38,9 +38,25 @@ Every query that returns a product row returns these fields:
 The rules are applied in Rust (`packages/catalog`), not in SQL. The queries store exactly
 what they are given.
 
+## Import Jobs
+
+Named SQL files under `db/queries/import_jobs/`.
+
+| File | Query name | Purpose |
+| --- | --- | --- |
+| `create_import_job.sql` | `create_import_job` | Insert a queued job |
+| `claim_next_import_job.sql` | `claim_next_import_job` | `queued` -> `running`, increment `attempts` when `attempts < max` |
+| `complete_import_job.sql` | `complete_import_job` | `running` -> `succeeded` |
+| `fail_import_job.sql` | `fail_import_job` | `running` -> `failed` with `last_error` |
+| `requeue_import_job.sql` | `requeue_import_job` | `failed` -> `queued` without clearing `attempts` |
+| `get_import_job.sql` | `get_import_job` | Read one job by id |
+
+`id`, `created_at`, and `updated_at` come from Rust (UUIDv7 + clock), same as products.
+
 ## Done Check
 
 - Cornucopia-generated bindings expose these query names:
   `db_generated::queries::products::{create_product, list_products, list_published_products, update_product_publication}`.
-- The DAL (`packages/db/src/products.rs`) wraps those generated calls. Handlers never call
-  generated query functions.
+  `db_generated::queries::import_jobs::{create_import_job, claim_next_import_job, complete_import_job, fail_import_job, requeue_import_job, get_import_job}`.
+- The DAL (`packages/db/src/products.rs`, `packages/db/src/import_jobs.rs`) wraps those generated
+  calls. Handlers never call generated query functions.

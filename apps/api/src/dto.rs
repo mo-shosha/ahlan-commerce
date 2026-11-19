@@ -1,4 +1,4 @@
-use catalog::{NewProduct, Product, Timestamp};
+use catalog::{ImportJob, NewProduct, Product, Timestamp};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -72,6 +72,31 @@ impl From<Product> for ProductResponse {
             published_at: product.published_at,
             created_at: product.created_at,
             updated_at: product.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateImportJobRequest {
+    pub input_path: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CreateImportJobResponse {
+    pub job: ImportJobResponse,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ImportJobResponse {
+    pub id: Uuid,
+    pub status: String,
+}
+
+impl From<ImportJob> for ImportJobResponse {
+    fn from(job: ImportJob) -> Self {
+        Self {
+            id: job.id.as_uuid(),
+            status: job.status,
         }
     }
 }

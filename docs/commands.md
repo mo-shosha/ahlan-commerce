@@ -8,6 +8,7 @@ This document describes the common development commands available in the project
 | `make start` | Starts PostgreSQL and the API under DeKit and opens its console. | `dekit up` then `dekit attach` |
 | `make stop` | Stops every DeKit task and the DeKit runner (this stops the database container too). | `dekit down` |
 | `make run-api` | Runs the API server. | `cargo run -p api` |
+| `make run-worker` | Runs the product import worker. | `cargo run -p worker` |
 | `make run-admin` | Runs the React admin UI (Vite). API must already be on port 3000. | `npm --prefix apps/admin run dev` |
 | `make test` | Runs all workspace tests. | `cargo test --workspace` |
 | `make test-admin-e2e` | Playwright e2e for admin create/list (API on port 3000). | `npm --prefix apps/admin run test:e2e` |
@@ -39,16 +40,17 @@ GraphQL examples (query and create mutation) are in `docs/graphql.md`.
 
 ## Running with DeKit
 
-`dekit.yaml` at the repository root defines two tasks:
+`dekit.yaml` at the repository root defines three tasks:
 
 | Task | Command | Ready when |
 |---|---|---|
 | `db` (PostgreSQL) | `make db-run` | `make db-health` exits with 0 |
 | `api` (Axum API) | `make run-api` | `GET http://localhost:3000/health` answers 2xx |
+| `worker` (import worker) | `make run-worker` | process starts (`true` ready check) |
 
-`api` depends on `db`, so DeKit waits for PostgreSQL to accept connections before running
-`cargo run`. Stopping the `db` task runs `make db-stop`, which stops the container. The
-`docker compose logs --follow` process then exits by itself.
+`api` and `worker` both depend on `db`, so DeKit waits for PostgreSQL to accept connections
+before running them. Stopping the `db` task runs `make db-stop`, which stops the container.
+The `docker compose logs --follow` process then exits by itself.
 
 In the console, `q` asks how to quit: press `q` again to stop everything (like `make stop`)
 or `d` to detach and leave the tasks running. Run `make start` again to reattach. Other

@@ -1,0 +1,24 @@
+[package]
+name = "worker"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "worker"
+path = "src/main.rs"
+
+[dependencies]
+catalog.workspace = true
+db.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+[dev-dependencies]
+catalog = { workspace = true, features = ["test-support"] }
+db = { workspace = true, features = ["test-support"] }
+tempfile = "3"
